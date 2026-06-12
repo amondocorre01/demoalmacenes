@@ -1,0 +1,17 @@
+/* Definición de fuentes del sistema */
+@font-face {
+  font-family: 'Branding-SemiBold';
+  src: url('../components/fonts/Branding-SemiBold.woff2') format('woff2'),
+    url('../components/fonts/Branding-SemiBold.woff') format('woff');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Variables de tipografía centralizadas */
+  --font-main: 'Branding-SemiBold';
+  /*'Inter', sans-serif;*/
+  --font-headline: 'Branding-SemiBold';
+  /*'Plus Jakarta Sans', sans-serif;*/
+}

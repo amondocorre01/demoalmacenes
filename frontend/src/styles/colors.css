@@ -1,0 +1,75 @@
+/* Archivo central de colores del sistema */
+:root {
+  /* Colores Principales */
+  --primary: #9d0013;
+  --on-primary: #ffffff;
+  --primary-container: #c02428;
+  --on-primary-container: #ffd8d4;
+
+  /* Colores Secundarios */
+  --secondary: #5f5e5e;
+  --on-secondary: #ffffff;
+  --secondary-container: #e2dfde;
+  --on-secondary-container: #636262;
+
+  /* Colores Terciarios */
+  --tertiary: #005175;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #006a98;
+  --on-tertiary-container: #c5e5ff;
+
+  /* Superficies y Fondos */
+  --background: #fbf9f5;
+  --on-background: #1b1c1a;
+  --surface: #fbf9f5;
+  --on-surface: #1b1c1a;
+  --surface-variant: #e4e2de;
+  --on-surface-variant: #5b403e;
+
+  /* Estados */
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+
+  /* Otros */
+  --outline: #8f706d;
+  --outline-variant: #e3beba;
+}
+
+/* Modo Oscuro */
+.dark {
+  /* Superficies y Fondos */
+  --background: #09090b; /* zinc-950 */
+  --on-background: #f4f4f5; /* zinc-100 */
+  --surface: #09090b; /* zinc-950 */
+  --on-surface: #f4f4f5; /* zinc-100 */
+  --surface-variant: #18181b; /* zinc-900 */
+  --on-surface-variant: #a1a1aa; /* zinc-400 */
+  --outline: #3f3f46; /* zinc-700 */
+  --outline-variant: #27272a; /* zinc-800 */
+
+  /* Colores Principales (Adaptados para modo oscuro sin perder identidad de marca) */
+  --primary: #ef4444; /* red-500 */
+  --on-primary: #ffffff;
+  --primary-container: #991b1b; /* red-800 */
+  --on-primary-container: #fee2e2;
+
+  /* Colores Secundarios */
+  --secondary: #a1a1aa; /* zinc-400 */
+  --on-secondary: #09090b;
+  --secondary-container: #27272a;
+  --on-secondary-container: #e4e4e7;
+
+  /* Colores Terciarios */
+  --tertiary: #38bdf8; /* sky-400 */
+  --on-tertiary: #09090b;
+  --tertiary-container: #075985;
+  --on-tertiary-container: #e0f2fe;
+
+  /* Estados */
+  --error: #ef4444;
+  --on-error: #ffffff;
+  --error-container: #7f1d1d;
+  --on-error-container: #fef2f2;
+}
