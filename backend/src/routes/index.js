@@ -7,6 +7,7 @@ const modules = [
     { path: '/productos-intermedios', routes: require('../modules/productos-intermedios/productos-intermedios.routes') },
     { path: '/inventario', routes: require('../modules/inventario/inventario.routes') },
     { path: '/configuracion', routes: require('../modules/configuracion/configuracion.routes') },
+    { path: '/devolucion-producto', routes: require('../modules/devolucion-producto/devolucion-producto.routes') },
 ];
 
 router.get('/', (req, res) => {
