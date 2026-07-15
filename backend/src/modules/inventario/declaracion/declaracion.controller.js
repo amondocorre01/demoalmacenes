@@ -20,7 +20,7 @@ const guardarDeclaracionAlmacen = tryCatch(async (req, res) => {
     const idUsuario = getUserId(req);
     const idAlmacen = parseInt(req.params.idAlmacen, 10);
     const result = await Service.guardarDeclaracionAlmacen(idAlmacen, req.body, idUsuario);
-    res.json({ success: result.status, message: result.message });
+    res.json({ status: result.status, message: result.message });
 });
 
 module.exports = {

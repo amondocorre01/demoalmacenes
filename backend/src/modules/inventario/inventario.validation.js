@@ -19,7 +19,7 @@ const productosDeclaracionItemSchema = z.object({
 
 const guardarDeclaracionBodySchema = z.object({
     fecha: z.string().optional().default(''),
-    productos: z.array(productosDeclaracionItemSchema).optional().default([])
+    productos: z.array(productosDeclaracionItemSchema).min(1, 'Se requiere al menos un producto')
 }).passthrough();
 
 const guardarVerificacionBodySchema = z.object({

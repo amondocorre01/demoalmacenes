@@ -1,6 +1,7 @@
 const Repo = require('./verif-declaracion.repository');
 const InventarioHelper = require('../../../helpers/inventario.helper');
 const { AppError } = require('../../../middleware/errorHandler');
+const { beginTransaction } = require('../../../config/database');
 
 class VerifDeclaracionService {
 
@@ -15,7 +16,7 @@ class VerifDeclaracionService {
         const fechaFin = fechaSel + ' 23:59:59';
 
         const verif = await Repo.getUltimaVerifDeclaracion(idAlmacen);
-        const estadoVerif = verif?.ESTADO_VERIFICACION || 0;
+        const estadoVerif = verif?.ESTADO_VERIFICACION || false;
         const documento = await Repo.existeDeclaracion(idAlmacen, fechaInicio, fechaFin);
         const idDocumento = documento?.ID_ALMACEN_DOCUMENTO_INVENTARIO || 0;
 
@@ -56,11 +57,14 @@ class VerifDeclaracionService {
     async guardarVerificacionDeclaracionAlmacen(idAlmacen, { fecha, productos }, idUsuario) {
         const fechaAct = new Date().toISOString().slice(0, 10);
         const fechaSel = fecha || fechaAct;
+
+        this._validarDatosDeclaracion(idAlmacen, fechaSel, fechaAct, productos);
+
         const fechaInicio = fechaSel + ' 00:00:00';
         const fechaFin = fechaSel + ' 23:59:59';
 
         const verif = await Repo.getUltimaVerifDeclaracion(idAlmacen);
-        const estadoVerif = verif?.ESTADO_VERIFICACION || 0;
+        const estadoVerif = verif?.ESTADO_VERIFICACION || false;
 
         let fechaHoraUlt = fechaAct;
         if (verif) {
@@ -69,52 +73,59 @@ class VerifDeclaracionService {
 
         const documento = await Repo.existeDeclaracion(idAlmacen, fechaInicio, fechaFin);
         const idDocumento = documento?.ID_ALMACEN_DOCUMENTO_INVENTARIO || 0;
-        const estadoVerifAct = documento?.ESTADO_VERIFICACION || 0;
+        const estadoVerifAct = documento?.ESTADO_VERIFICACION || false;
 
-        if (estadoVerifAct === 1) {
+        if (estadoVerifAct) {
             throw new AppError('La declaración ya fue verificada, por lo tanto, no se pueden realizar más cambios.', 400);
         }
 
-        const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        let idDoc = 0;
+        const transaction = await beginTransaction();
+        try {
+            const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            let idDoc = 0;
 
-        if (idDocumento > 0) {
-            await Repo.actualizarDocInvVerif(idUsuario, idDocumento, fechaHora);
-        } else {
-            idDoc = await Repo.registrarDocInvVerif(idUsuario, idAlmacen, fechaHora);
-        }
-
-        if (idDoc === 0 && idDocumento === 0) {
-            throw new AppError('Ocurrio un error al registrar el documento.', 500);
-        }
-
-        const docId = idDocumento || idDoc;
-        const stocks = await Repo.getStockObjByAlmacen(idAlmacen);
-
-        for (const producto of productos) {
-            const idProducto = producto.id_producto;
-            const idProductoDetalle = producto.id_producto_detalle;
-            const idProductoIntermedio = producto.id_producto_intermedio;
-            const cantidad = producto.cantidad;
-            const cantidadAdecuacion = producto.cantidad_adecuacion;
-            const observacion = producto.observacion || '';
-            const stock = stocks[`${idProductoDetalle}-PD`]?.[`${idProductoIntermedio}-PI`] || 0;
-
-            const existe = await Repo.existeProductoEnDecla(docId, idProducto, idProductoDetalle, idProductoIntermedio);
-            if (existe) {
-                await Repo.actualizarDeclaInvVerif(docId, idProducto, idProductoDetalle, idProductoIntermedio, cantidad * cantidadAdecuacion, fechaHora, stock * cantidadAdecuacion, observacion);
+            if (idDocumento > 0) {
+                await Repo.actualizarDocInvVerif(idUsuario, idDocumento, fechaHora);
             } else {
-                await Repo.registrarDeclaInvVerif(docId, idProducto, idProductoDetalle, idProductoIntermedio, cantidad * cantidadAdecuacion, fechaHora, stock * cantidadAdecuacion, observacion);
+                idDoc = await Repo.registrarDocInvVerif(idUsuario, idAlmacen, fechaHora);
             }
+
+            if (idDoc === 0 && idDocumento === 0) {
+                await transaction.rollback();
+                throw new AppError('Ocurrio un error al registrar el documento.', 500);
+            }
+            const docId = idDocumento || idDoc;
+            const stocks = await Repo.getStockObjByAlmacen(idAlmacen);
+            console.log('stock',stocks)
+            for (const producto of productos) {
+                const idProducto = producto.id_producto;
+                const idProductoDetalle = producto.id_producto_detalle;
+                const idProductoIntermedio = producto.id_producto_intermedio;
+                const cantidad = producto.cantidad;
+                const cantidadAdecuacion = producto.cantidad_adecuacion;
+                const observacion = producto.observacion || '';
+                const stock = stocks[`${idProductoDetalle}-PD`]?.[`${idProductoIntermedio}-PI`] || 0;
+
+                const existe = await Repo.existeProductoEnDecla(docId, idProducto, idProductoDetalle, idProductoIntermedio);
+                if (existe) {
+                    await Repo.actualizarDeclaInvVerif(docId, idProducto, idProductoDetalle, idProductoIntermedio, cantidad * cantidadAdecuacion, fechaHora, stock * cantidadAdecuacion, observacion);
+                } else {
+                    await Repo.registrarDeclaInvVerif(docId, idProducto, idProductoDetalle, idProductoIntermedio, cantidad * cantidadAdecuacion, fechaHora, stock * cantidadAdecuacion, observacion);
+                }
+            }
+
+            await this._verificarDescuadreInventario(idAlmacen, docId, idUsuario, fechaAct, fechaHoraUlt);
+
+            await transaction.commit();
+            return { status: true, message: 'Se guardo correctamente la información.' };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
         }
-
-        await this._verificarDescuadreInventario(idAlmacen, docId, idUsuario, fechaAct, fechaHoraUlt);
-
-        return { status: true, message: 'Se guardo correctamente la información.' };
     }
 
     async listarDeclaVerificadaAlmacen(idUsuario, idAlmacen) {
-        const almacenes = await InventarioHelper.listAlmacenUsuario(idUsuario, 0);
+        const almacenes = await InventarioHelper.listAlmacenUsuario(idUsuario, idAlmacen);
         const fechaAct = new Date().toISOString().slice(0, 10);
 
         for (const almacen of almacenes) {
@@ -139,7 +150,6 @@ class VerifDeclaracionService {
         const productos = await Repo.getProductoDescuadre(idAlmacen, idDoc, fecha, fechaHoraUlt);
         const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
         const tipo = 8;
-
         for (const producto of productos) {
             const idProductoIntermedio = producto.ID_PRODUCTO_INTERMEDIO;
             const idProductoDetalle = producto.ID_PRODUCTO_DETALLE;
@@ -155,6 +165,7 @@ class VerifDeclaracionService {
 
             if (diferencia < 0) {
                 const cant = Math.round(Math.abs(diferencia) * 100) / 100;
+                console.log('_verificarDescuadreInventario----',diferencia)
                 const fechaVen = new Date(fecha);
                 fechaVen.setDate(fechaVen.getDate() + duracionVal);
                 const fechaVenStr = fechaVen.toISOString().slice(0, 10);
@@ -190,9 +201,44 @@ class VerifDeclaracionService {
                     await Repo.actualizarCantUtilizada(idInvA, nuevaCantUtz, idUsuario);
 
                     if (cantDesp > 0) {
-                        await Repo.registrarDesperdicio(idAlmacen, idUsuario, idInvRg, idPD, idProducto, idProductoIntermedio, cantDesp, idUnidad, fechaHora, fechaVenInv, 'descuadre de inventario.', tipo, prctoPrimario);
+                        await Repo.registrarDesperdicio(idAlmacen, idUsuario, idInvRg, idPD, idProducto, idProductoIntermedio, cantDesp, idUnidad, fechaHora, fechaVenInv, 'descuadre de inventario.', tipo, prctoPrimario, '', 0);
                     }
                 }
+            }
+        }
+    }
+
+    _validarDatosDeclaracion(idAlmacen, fechaSel, fechaAct, productos) {
+        if (!idAlmacen || idAlmacen <= 0) {
+            throw new AppError("Campo 'id_planta_almacen' no valido.", 400);
+        }
+        if (fechaSel !== fechaAct) {
+            throw new AppError('No puedes realizar la verificación de la declaración de inventario en una fecha que no sea la actual.', 400);
+        }
+        if (!productos || productos.length === 0) {
+            throw new AppError('Se requiere productos.', 400);
+        }
+        for (const producto of productos) {
+            const nombrePr = producto.producto || '';
+            const idProducto = producto.id_producto;
+            if (idProducto === undefined || idProducto === null || isNaN(idProducto)) {
+                throw new AppError(`Campo id_producto requerido en el producto: '${nombrePr}'.`, 400);
+            }
+            const idProductoDetalle = producto.id_producto_detalle;
+            if (idProductoDetalle === undefined || idProductoDetalle === null || isNaN(idProductoDetalle)) {
+                throw new AppError(`Campo id_producto_detalle requerido en el producto: '${nombrePr}'.`, 400);
+            }
+            const idProductoIntermedio = producto.id_producto_intermedio;
+            if (idProductoIntermedio === undefined || idProductoIntermedio === null || isNaN(idProductoIntermedio)) {
+                throw new AppError(`Campo id_producto_intermedio requerido en el producto: '${nombrePr}'.`, 400);
+            }
+            const cantidad = producto.cantidad;
+            if (cantidad === undefined || cantidad === null || isNaN(cantidad)) {
+                throw new AppError(`Campo cantidad no valida en el producto: '${nombrePr}'.`, 400);
+            }
+            const cantidadAdecuacion = producto.cantidad_adecuacion;
+            if (cantidadAdecuacion === undefined || cantidadAdecuacion === null || isNaN(cantidadAdecuacion) || cantidadAdecuacion === 0) {
+                throw new AppError(`Campo cantidad_adecuacion no valida en el producto: '${nombrePr}'.`, 400);
             }
         }
     }

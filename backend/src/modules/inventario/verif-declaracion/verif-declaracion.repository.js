@@ -57,38 +57,49 @@ class VerifDeclaracionRepository {
         return await InventarioHelper.getInventarioByProducto(idAlmacen, strWhere, fecha);
     }
 
-    async registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idProductoConversion) {
-        return await InventarioHelper.registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idProductoConversion);
+    async registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idDetalleDevol) {
+        return await InventarioHelper.registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idDetalleDevol);
     }
 
     async actualizarCantUtilizada(idInventario, cantidad, idUsuario) {
         return await InventarioHelper.actualizarCantUtilizada(idInventario, cantidad, idUsuario);
     }
 
-    async registrarDesperdicio(idAlmacen, idUsuario, idInv, idProdDetalle, idProducto, idProdIntermedio, cantidad, idUnidad, fechaHora, fechaVen, detalle, tipo, porcentajePrimario) {
-        await query(`
-            INSERT INTO PLANTA_ALMACEN_DESPEDICIO
-            (ID_PLANTA_ALMACEN, ID_USUARIO_REGISTRA, ID_ALMACEN_INVENTARIO, ID_PRODUCTO_DETALLE,
-             ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO, CANTIDAD, ID_UNIDAD_MEDIDA,
-             FECHA_REGISTRO, FECHA_VENCIMIENTO, DETALLE, TIPO, PORCENTAJE_PRIMARIO)
-            VALUES (@idAlmacen, @idUsuario, @idInv, @idProdDetalle,
-                    @idProducto, @idProdIntermedio, @cantidad, @idUnidad,
-                    @fechaHora, @fechaVen, @detalle, @tipo, @porcentajePrimario)
+    async registrarDesperdicio(idAlmacen, idUsuario, idInv, idProdDetalle, idProducto, idProdIntermedio, cantidad, idUnidad, fechaHora, fechaVen, detalle, tipo, prctoPrimario, imagen, automatico) {
+        const precioUnitario = await InventarioHelper.calcularPrecioDesperdicio(idProducto, idProdIntermedio, idProdDetalle, cantidad);
+        const result = await query(`
+            INSERT INTO PLANTA_DESPERDICIO_ALMACEN
+            (ID_USUARIO_REGISTRA, ID_ALMACEN_INVENTARIO, ID_PRODUCTO_DETALLE, ID_PRODUCTO_INTERMEDIO,
+             ID_UNIDAD_MEDIDA, CANTIDAD, FECHA_REGISTRO, ESTADO, PRECIO_ASUMIDO_EMPRESA,
+             PRECIO_ASUMIDO_EMPLEADO, ID_PLANTA_ALMACEN, PRECIO_PRODUCTO, FECHA_VENCIMIENTO,
+             DETALLE, ID_ESTADO, PROD_PRIMARIO, AUTOMATICO)
+            VALUES (@idUsuario, @idInv, @idProdDetalle, @idProdIntermedio,
+                    @idUnidad, @cantidad, @fechaHora, 1, 0,
+                    @precioEmpleado, @idAlmacen, @precioProducto, @fechaVen,
+                    @detalle, @tipo, @prctoPrimario, @automatico);
+            SELECT SCOPE_IDENTITY() as id;
         `, [
-            { name: 'idAlmacen', value: idAlmacen },
             { name: 'idUsuario', value: idUsuario },
             { name: 'idInv', value: idInv },
             { name: 'idProdDetalle', value: idProdDetalle },
-            { name: 'idProducto', value: idProducto },
             { name: 'idProdIntermedio', value: idProdIntermedio },
-            { name: 'cantidad', value: cantidad },
             { name: 'idUnidad', value: idUnidad },
+            { name: 'cantidad', value: cantidad },
             { name: 'fechaHora', value: fechaHora },
+            { name: 'precioEmpleado', value: precioUnitario },
+            { name: 'idAlmacen', value: idAlmacen },
+            { name: 'precioProducto', value: precioUnitario },
             { name: 'fechaVen', value: fechaVen },
             { name: 'detalle', value: detalle },
             { name: 'tipo', value: tipo },
-            { name: 'porcentajePrimario', value: porcentajePrimario }
+            { name: 'prctoPrimario', value: prctoPrimario || 0 },
+            { name: 'automatico', value: automatico || 0 }
         ]);
+        const id = result.recordset[0]?.id || 0;
+        if (imagen && id) {
+            await InventarioHelper.guardarImagenDesperdicioAlmacen(id, imagen);
+        }
+        return id;
     }
 }
 
