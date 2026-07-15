@@ -96,7 +96,6 @@ class VerifDeclaracionService {
             }
             const docId = idDocumento || idDoc;
             const stocks = await Repo.getStockObjByAlmacen(idAlmacen);
-            console.log('stock',stocks)
             for (const producto of productos) {
                 const idProducto = producto.id_producto;
                 const idProductoDetalle = producto.id_producto_detalle;
@@ -165,7 +164,6 @@ class VerifDeclaracionService {
 
             if (diferencia < 0) {
                 const cant = Math.round(Math.abs(diferencia) * 100) / 100;
-                console.log('_verificarDescuadreInventario----',diferencia)
                 const fechaVen = new Date(fecha);
                 fechaVen.setDate(fechaVen.getDate() + duracionVal);
                 const fechaVenStr = fechaVen.toISOString().slice(0, 10);
