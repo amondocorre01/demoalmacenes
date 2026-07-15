@@ -22,7 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
+*.sql
+*.md
 # Environment variables
 .env
 .env.local
