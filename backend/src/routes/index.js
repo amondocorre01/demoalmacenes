@@ -8,6 +8,7 @@ const modules = [
     { path: '/inventario', routes: require('../modules/inventario/inventario.routes') },
     { path: '/configuracion', routes: require('../modules/configuracion/configuracion.routes') },
     { path: '/devolucion-producto', routes: require('../modules/devolucion-producto/devolucion-producto.routes') },
+    { path: '/pedidos', routes: require('../modules/pedidos/pedidos.routes') },
 ];
 
 router.get('/', (req, res) => {
