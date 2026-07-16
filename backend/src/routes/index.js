@@ -9,6 +9,7 @@ const modules = [
     { path: '/configuracion', routes: require('../modules/configuracion/configuracion.routes') },
     { path: '/devolucion-producto', routes: require('../modules/devolucion-producto/devolucion-producto.routes') },
     { path: '/pedidos', routes: require('../modules/pedidos/pedidos.routes') },
+    { path: '/recetas-intermedias', routes: require('../modules/recetas-intermedias/recetas-intermedias.routes') },
 ];
 
 router.get('/', (req, res) => {

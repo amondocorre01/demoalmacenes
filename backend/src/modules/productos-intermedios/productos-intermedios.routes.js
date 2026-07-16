@@ -6,7 +6,6 @@ const {
     createProductoIntermedioSchema,
     updateProductoIntermedioSchema,
     recetasQuerySchema,
-    recetaIntermedioSchema,
     updateEstadoRecetaAlmacenSchema
 } = require('./productos-intermedios.validation');
 
