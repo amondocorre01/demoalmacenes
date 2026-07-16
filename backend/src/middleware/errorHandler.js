@@ -9,7 +9,6 @@ const notFound = (req, res) => {
 };
 
 const handle = (err, req, res, next) => {
-  console.log('err',err)
     const status = err.statusCode || err.status || 500;
     const message = err.message || 'Error interno del servidor';
 
