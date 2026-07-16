@@ -10,6 +10,7 @@ const modules = [
     { path: '/devolucion-producto', routes: require('../modules/devolucion-producto/devolucion-producto.routes') },
     { path: '/pedidos', routes: require('../modules/pedidos/pedidos.routes') },
     { path: '/recetas-intermedias', routes: require('../modules/recetas-intermedias/recetas-intermedias.routes') },
+    { path: '/transferencia', routes: require('../modules/transferencia/transferencia.routes') },
 ];
 
 router.get('/', (req, res) => {

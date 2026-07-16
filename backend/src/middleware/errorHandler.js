@@ -9,6 +9,7 @@ const notFound = (req, res) => {
 };
 
 const handle = (err, req, res, next) => {
+  console.log('err',err)
     const status = err.statusCode || err.status || 500;
     const message = err.message || 'Error interno del servidor';
 
@@ -17,17 +18,21 @@ const handle = (err, req, res, next) => {
     }
 
     if (process.env.NODE_ENV === 'development') {
-        res.status(status).json({
+        const data = {
             success: false,
             message,
             error: err.message,
             stack: err.stack
-        });
+        };
+        if (err.productos) data.productos = err.productos;
+        res.status(status).json(data);
     } else {
-        res.status(status).json({
+        const data = {
             success: false,
             message: status === 500 ? 'Error interno del servidor' : message
-        });
+        };
+        if (err.productos) data.productos = err.productos;
+        res.status(status).json(data);
     }
 };
 

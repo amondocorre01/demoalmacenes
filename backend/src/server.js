@@ -390,10 +390,12 @@ app.use('/api/v1', require('./routes/index'));
 
 app.use((err, req, res, next) => {
     console.error('Error:', err);
-    res.status(err.statusCode || err.status || 500).json({
+    const data = {
         success: false,
         mensaje: err.message || 'Error interno del servidor'
-    });
+    };
+    if (err.productos) data.productos = err.productos;
+    res.status(err.statusCode || err.status || 500).json(data);
 });
 
 app.use(ErrorHandler.notFound);
