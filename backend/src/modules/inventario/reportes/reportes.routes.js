@@ -6,7 +6,8 @@ const {
     idAlmacenQuery,
     idAlmacenInventarioQuery,
     depreciarProductoBodySchema,
-    listarDepreciadosQuery
+    listarDepreciadosQuery,
+    historialInventarioQuerySchema
 } = require('../inventario.validation');
 
 router.get('/almacenes', validateQuery(idAlmacenQuery), Controller.listAlmacenUsuario);
@@ -15,5 +16,6 @@ router.get('/:idAlmacen/productos', Controller.listarProductosAlmacen);
 router.get('/:idAlmacen/productos-especiales', Controller.listarProductosEspeciales);
 router.post('/:idAlmacen/depreciar', validate(depreciarProductoBodySchema), Controller.depreciarProducto);
 router.get('/:idAlmacen/depreciados', validateQuery(listarDepreciadosQuery), Controller.listarProductosDepreciados);
+router.get('/historial', validateQuery(historialInventarioQuerySchema), Controller.listHistorialInventarioAlmacen);
 
 module.exports = router;

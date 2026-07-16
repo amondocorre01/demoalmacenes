@@ -105,6 +105,26 @@ class ReportesService {
         }
         return productos;
     }
+
+    async listHistorialInventarioAlmacen(data) {
+        const { id_planta_almacen = 0, id_producto_detalle = 0, id_producto_intermedio = 0, fecha_inicio = '', fecha_fin = '' } = data;
+        const fecha =  new Date().toISOString().slice(0, 10);
+        const fechaInicio = fecha_inicio ? `${fecha_inicio} 00:00:00` : `${fecha} 00:00:00`;
+        const fechaFin = fecha_fin ? `${fecha_fin} 23:59:59` : `${fecha} 23:59:59`;
+
+        const productos = await Repo.listHistorialInventarioAlmacen(
+            fechaInicio, fechaFin, id_planta_almacen, id_producto_detalle, id_producto_intermedio
+        );
+
+        if (productos && productos.length > 0) {
+            productos.forEach(inv => {
+                try { inv.DETALLE = inv.DETALLE ? JSON.parse(inv.DETALLE) : []; } catch { inv.DETALLE = []; }
+            });
+            return { status: true, productos };
+        }
+
+        return { status: false, message: 'No existen productos en inventario.' };
+    }
 }
 
 module.exports = new ReportesService();

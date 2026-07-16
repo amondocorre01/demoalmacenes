@@ -182,6 +182,18 @@ class ReportesRepository {
         const result = await query(sql, params);
         return result.recordset;
     }
+    async listHistorialInventarioAlmacen(fechaInicio, fechaFin, idAlmacen, idProdDetalle, idProdIntermedio) {
+        const result = await query(`
+            EXEC PL_GET_HIST_INVENTARIO_ALMACEN @fechaInicio, @fechaFin, @idAlmacen, @idProdDetalle, @idProdIntermedio
+        `, [
+            { name: 'fechaInicio', value: fechaInicio },
+            { name: 'fechaFin', value: fechaFin },
+            { name: 'idAlmacen', value: idAlmacen },
+            { name: 'idProdDetalle', value: idProdDetalle },
+            { name: 'idProdIntermedio', value: idProdIntermedio }
+        ], 'planta');
+        return result.recordset;
+    }
 }
 
 module.exports = new ReportesRepository();

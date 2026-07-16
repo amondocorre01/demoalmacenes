@@ -41,12 +41,20 @@ const listarProductosDepreciados = tryCatch(async (req, res) => {
     const data = await Service.listarProductosDepreciados(idAlmacen, fecha_inicio, fecha_fin);
     res.json({ success: true, datos: data });
 });
-
+const listHistorialInventarioAlmacen = tryCatch(async (req, res) => {
+    const result = await Service.listHistorialInventarioAlmacen(req.query);
+    if (result.status) {
+        res.json({ success: true, datos: result.productos });
+    } else {
+        res.json({ success: false, message: result.message });
+    }
+});
 module.exports = {
     listAlmacenUsuario,
     listInventarioAlmacen,
     listarProductosAlmacen,
     listarProductosEspeciales,
     depreciarProducto,
-    listarProductosDepreciados
+    listarProductosDepreciados,
+    listHistorialInventarioAlmacen
 };

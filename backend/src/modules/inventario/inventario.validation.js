@@ -42,7 +42,13 @@ const listarDepreciadosQuery = z.object({
     fecha_inicio: z.string().optional().default(''),
     fecha_fin: z.string().optional().default('')
 }).passthrough();
-
+const historialInventarioQuerySchema = z.object({
+    id_planta_almacen: z.coerce.number().int().nonnegative().optional().default(0),
+    id_producto_detalle: z.coerce.number().int().nonnegative().optional().default(0),
+    id_producto_intermedio: z.coerce.number().int().nonnegative().optional().default(0),
+    fecha_inicio: z.string().optional().default(''),
+    fecha_fin: z.string().optional().default('')
+}).passthrough();
 module.exports = {
     idAlmacenQuery,
     idAlmacenFechaQuery,
@@ -50,5 +56,6 @@ module.exports = {
     guardarVerificacionBodySchema,
     idAlmacenInventarioQuery,
     depreciarProductoBodySchema,
-    listarDepreciadosQuery
+    listarDepreciadosQuery,
+    historialInventarioQuerySchema
 };
