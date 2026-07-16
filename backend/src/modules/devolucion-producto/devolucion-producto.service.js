@@ -124,7 +124,6 @@ class DevolucionProductoService {
             return { status: true, message: 'Se guardo correctamente la información.' };
         } catch (error) {
             await transaction.rollback();
-            console.log('error',error)
             return { status: false, message: 'Ocurio un error.' };
         }
     }
