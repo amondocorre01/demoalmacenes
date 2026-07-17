@@ -11,6 +11,7 @@ const modules = [
     { path: '/pedidos', routes: require('../modules/pedidos/pedidos.routes') },
     { path: '/recetas-intermedias', routes: require('../modules/recetas-intermedias/recetas-intermedias.routes') },
     { path: '/transferencia', routes: require('../modules/transferencia/transferencia.routes') },
+    { path: '/seguridad', routes: require('../modules/seguridad/seguridad.routes') },
 ];
 
 router.get('/', (req, res) => {
