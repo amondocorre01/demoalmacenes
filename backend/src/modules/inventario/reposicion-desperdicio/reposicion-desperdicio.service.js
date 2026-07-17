@@ -5,11 +5,11 @@ const PlantaHelpers = require('../../../helpers/planta.helper');
 class ReposicionDesperdicioService {
 
     _getFechaHora() {
-        return new Date().toISOString().replace('T', ' ').substring(0, 19);
+        return new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
     }
 
     _getFecha() {
-        return new Date().toISOString().split('T')[0];
+        return new Date().toLocaleDateString('en-CA');
     }
 
     async _getIdsAlmacen(idUsuario, almacenes) {

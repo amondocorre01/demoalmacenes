@@ -5,7 +5,7 @@ class AjustesRepository {
     // ── Stock ──
 
     async listarProductosStockAlmacen(idAlmacen) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             EXEC GET_PRODUCTO_STOCK_ALMCEN @idAlmacen, @fecha
         `, [
@@ -52,7 +52,7 @@ class AjustesRepository {
     // ── Precios ──
 
     async getPrecioProductoIntermedio(idProductoIntermedio) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT dbo.getPrecioRecetaIntermedio(@id, @fecha) AS PRECIO
         `, [
@@ -81,7 +81,7 @@ class AjustesRepository {
     }
 
     async getProductoConversion(idProducto) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT dbo.getProductoConversion(@id, @fecha) AS PRECIO
         `, [
@@ -236,7 +236,7 @@ class AjustesRepository {
     }
 
     async getStockProductoAlmacen(idAlmacen, idProducto, idProductoDetalle, idProductoIntermedio) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT SUM(CANTIDAD - CANTIDAD_UTILIZADA) AS CANTIDAD
             FROM VISTA_PLANTA_ALMACEN_INVENTARIO vpai

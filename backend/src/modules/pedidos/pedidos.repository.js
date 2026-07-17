@@ -44,7 +44,7 @@ class PedidosRepository {
 
     // ─── getInventarioArea ───
     async getInventarioArea(idArea) {
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         const sql = `
             SELECT (SUM(pi2.CANTIDAD)) as CANTIDAD, pi2.ID_PRODUCTO_DETALLE
             FROM VISTA_PLANTA_INVENTARIO pi2
@@ -62,7 +62,7 @@ class PedidosRepository {
     // ─── getInventarioPlantaData ───
     async getInventarioPlantaData(idArea, idDocumento) {
         const inventario = await this.getInventarioArea(idArea);
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         let sqlPedidos;
         if (idDocumento === 0) {
             sqlPedidos = `
@@ -142,8 +142,8 @@ class PedidosRepository {
 
     // ─── guardarSolicitud ───
     async guardarSolicitud(estado, idPlantaAlmacen, idUsuario, fechaEntrega, productos, idArea, transaction = null) {
-        const fecha = new Date().toISOString().slice(0, 10);
-        const hora = new Date().toISOString().slice(11, 19);
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const hora = new Date().toLocaleTimeString('en-CA', { hour12: false });
         const sqlDoc = `INSERT INTO PLANTA_ALMACEN_DOCUMENTO (ESTADO, FECHA_REGISTRO, HORA_REGISTRO, ID_USUARIO, ID_PLANTA_ALMACEN, FECHA_A_ENTREGAR, ID_AREA)
                         VALUES (1, @fecha, @hora, @idUsuario, @idPlantaAlmacen, @fechaEntrega, @idArea);
                         SELECT SCOPE_IDENTITY() as id;`;
@@ -179,7 +179,7 @@ class PedidosRepository {
 
     // ─── registrarPedidoReg ───
     async registrarPedidoReg(idUsuario, estado, idDocumento, transaction = null) {
-        const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         const sql = `INSERT INTO PLANTA_ALMACEN_REGISTRO (FECHA, ID_USUARIO, ID_ESTADO, ID_ALMACEN_PEDIDO_DOCUMENTO)
                      VALUES (@fecha, @idUsuario, 1, @idDocumento)`;
         await query(sql, [

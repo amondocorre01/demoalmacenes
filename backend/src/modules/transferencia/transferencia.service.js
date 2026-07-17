@@ -12,7 +12,7 @@ class TransferenciaService {
     }
 
     async listarProductosIntermedioStock(idPlantaAlmacen) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const productos = await Repo.listarProdIntAlmacenData(idPlantaAlmacen);
         for (const producto of productos) {
             const res = await Repo.getStockByProductoIntermedio(
@@ -25,7 +25,7 @@ class TransferenciaService {
     }
 
     async listarProductosInsumoStock(idPlantaAlmacen) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         return await Repo.listarProductosInsumoStock(idPlantaAlmacen, fecha);
     }
 
@@ -60,8 +60,8 @@ class TransferenciaService {
             throw Object.assign(new Error('El almacén origen y destino es el mismo.'), { status: 400 });
         }
 
-        const fecha = new Date().toISOString().split('T')[0];
-        const fechaHora = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
 
         // Validar stock
         await this._validarStockTransferencia(id_planta_almacen, productos, fecha);

@@ -110,7 +110,7 @@ class ReportesRepository {
     }
 
     async registrarDescuentoConversion(idAlmacen, idProducto, cant, fechaVenInv, idUsuario, idInvA, idPD, idUnidadInv, idConversion) {
-        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const now = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         const result = await query(`
             INSERT INTO PLANTA_ALMACEN_INVENTARIO
             (ID_PLANTA_ALMACEN, ID_PRODUCTO, CANTIDAD, ESTADO_INGRESO, FECHA_REGISTRO,

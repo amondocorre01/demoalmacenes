@@ -80,7 +80,7 @@ class ReposicionDesperdicioRepository {
     // ── Productos con stock ──
 
     async getProductosAlmacenStock(idAlmacen) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT tb.*,
                 (SELECT tb.ID_PRODUCTO, tb.ID_PRODUCTO_DETALLE, tb.ID_PRODUCTO_INTERMEDIO,
@@ -189,7 +189,7 @@ class ReposicionDesperdicioRepository {
     // ── Precios ──
 
     async getPrecioProductoIntermedio(idProductoIntermedio) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT dbo.getPrecioRecetaIntermedio(@id, @fecha) AS PRECIO
         `, [
@@ -218,7 +218,7 @@ class ReposicionDesperdicioRepository {
     }
 
     async getProductoConversion(idProducto) {
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT dbo.getProductoConversion(@id, @fecha) AS PRECIO
         `, [
@@ -413,7 +413,7 @@ class ReposicionDesperdicioRepository {
     }
 
     async asignarResponsableReposicion(idUsuarioModifica, idUsuarioAsignado, idReposicion, transaction = null) {
-        const fecha = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const fecha = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         const result = await query(`
             UPDATE PLANTA_REPOSICION_ALMACEN
             SET ID_USUARIO_ASUMIDO = @idUsuarioAsignado,

@@ -61,7 +61,7 @@ class ProduccionRepository {
     }
 
     async getInventarioAlmacen(idAlmacen) {
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT SUM(INV.CANTIDAD) AS CANTIDAD, ID_PRODUCTO, ID_UNIDAD_MEDIDA, ID_PRODUCTO_INTERMEDIO FROM (
                 SELECT ID_PRODUCTO_DETALLE, ID_PRODUCTO, ID_UNIDAD_MEDIDA, ID_PRODUCTO_INTERMEDIO,
@@ -84,7 +84,7 @@ class ProduccionRepository {
     }
 
     async getInventarioPFAlmacen(idAlmacen) {
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         const result = await query(`
             SELECT ppd.ID_SUB_CATEGORIA_2, pai.ID_PRODUCTO,
                 CAST(SUM(CANTIDAD - CANTIDAD_UTILIZADA) as numeric(18,2)) as CANTIDAD

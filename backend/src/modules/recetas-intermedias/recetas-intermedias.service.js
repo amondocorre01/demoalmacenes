@@ -201,7 +201,7 @@ class RecetasIntermediasService {
 
         const transaction = await beginTransaction();
         try {
-            const fecha = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            const fecha = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
 
             await Repo.desactivarRecetasAnteriores(id_producto_intermedio, transaction);
 
@@ -250,7 +250,7 @@ class RecetasIntermediasService {
             throw new AppError('Ocurrio un error.', 500);
         }
 
-        const fecha = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const fecha = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         await Repo.registrarLogRI(idPlantaRiPi, cantidad_e, id_unidad_medida_e, cantidad_a, id_unidad_medida_a, 1, idUsuario, fecha, 'UPDATE');
 
         return { message: 'Se guardo correctamente la informacion.' };
@@ -264,7 +264,7 @@ class RecetasIntermediasService {
             throw new AppError('El campo productos es requerido.', 400);
         }
 
-        const fecha = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const fecha = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         let lastResult = false;
 
         for (const producto of productos) {

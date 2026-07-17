@@ -111,8 +111,8 @@ class DevolucionProductoService {
     }
 
     async registrarDevolucionProducto(idPlantaAlmacen, idArea, idUsuario, productos) {
-        const fecha = new Date().toISOString().slice(0, 10);
-        const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         const validacion = await this._validarDatosDevolucion(idPlantaAlmacen, idArea, productos);
         if (!validacion.status) {
             return validacion;

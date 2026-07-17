@@ -10,7 +10,7 @@ class VerifDeclaracionService {
     }
 
     async obtenerDeclaracionAlmacen(idAlmacen, fecha) {
-        const fechaAct = new Date().toISOString().slice(0, 10);
+        const fechaAct = new Date().toLocaleDateString('en-CA');
         const fechaSel = fecha || fechaAct;
         const fechaInicio = fechaSel + ' 00:00:00';
         const fechaFin = fechaSel + ' 23:59:59';
@@ -55,7 +55,7 @@ class VerifDeclaracionService {
     }
 
     async guardarVerificacionDeclaracionAlmacen(idAlmacen, { fecha, productos }, idUsuario) {
-        const fechaAct = new Date().toISOString().slice(0, 10);
+        const fechaAct = new Date().toLocaleDateString('en-CA');
         const fechaSel = fecha || fechaAct;
 
         this._validarDatosDeclaracion(idAlmacen, fechaSel, fechaAct, productos);
@@ -81,7 +81,7 @@ class VerifDeclaracionService {
 
         const transaction = await beginTransaction();
         try {
-            const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
             let idDoc = 0;
 
             if (idDocumento > 0) {
@@ -125,7 +125,7 @@ class VerifDeclaracionService {
 
     async listarDeclaVerificadaAlmacen(idUsuario, idAlmacen) {
         const almacenes = await InventarioHelper.listAlmacenUsuario(idUsuario, idAlmacen);
-        const fechaAct = new Date().toISOString().slice(0, 10);
+        const fechaAct = new Date().toLocaleDateString('en-CA');
 
         for (const almacen of almacenes) {
             const id = almacen.ID_PLANTA_ALMACEN;
@@ -147,7 +147,7 @@ class VerifDeclaracionService {
 
     async _verificarDescuadreInventario(idAlmacen, idDoc, idUsuario, fecha, fechaHoraUlt) {
         const productos = await Repo.getProductoDescuadre(idAlmacen, idDoc, fecha, fechaHoraUlt);
-        const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         const tipo = 8;
         for (const producto of productos) {
             const idProductoIntermedio = producto.ID_PRODUCTO_INTERMEDIO;

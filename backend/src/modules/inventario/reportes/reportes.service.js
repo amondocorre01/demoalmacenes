@@ -9,7 +9,7 @@ class ReportesService {
     }
 
     async listInventarioAlmacen(idAlmacen, tipoGroup = 1) {
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         const productos = await Repo.getInventarioAlmacen(idAlmacen, tipoGroup, fecha);
         if (!productos || productos.length === 0) {
             throw new AppError('No existen productos en inventario.', 404);
@@ -34,8 +34,8 @@ class ReportesService {
     }
 
     async depreciarProducto(idAlmacen, { id_producto_salida, id_producto_ingreso, cantidad_salida, cantidad_ingreso }, idUsuario) {
-        const fecha = new Date().toISOString().slice(0, 10);
-        const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
 
         const productoSalida = await Repo.getProductoData(id_producto_salida);
         const productoIngreso = await Repo.getProductoData(id_producto_ingreso);
@@ -108,7 +108,7 @@ class ReportesService {
 
     async listHistorialInventarioAlmacen(data) {
         const { id_planta_almacen = 0, id_producto_detalle = 0, id_producto_intermedio = 0, fecha_inicio = '', fecha_fin = '' } = data;
-        const fecha =  new Date().toISOString().slice(0, 10);
+        const fecha =  new Date().toLocaleDateString('en-CA');
         const fechaInicio = fecha_inicio ? `${fecha_inicio} 00:00:00` : `${fecha} 00:00:00`;
         const fechaFin = fecha_fin ? `${fecha_fin} 23:59:59` : `${fecha} 23:59:59`;
 

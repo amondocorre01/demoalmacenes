@@ -9,7 +9,7 @@ class AjustesService {
 
     async agregarStock(data, idUsuario) {
         const { id_planta_almacen, productos } = data;
-        const fechaHora = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
 
         const transaction = await beginTransaction();
         try {
@@ -41,8 +41,8 @@ class AjustesService {
 
     async descontarStock(data, idUsuario) {
         const { id_planta_almacen, productos } = data;
-        const fecha = new Date().toISOString().split('T')[0];
-        const fechaHora = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
 
         const transaction = await beginTransaction();
         try {

@@ -49,7 +49,7 @@ class DevolucionProductoRepository {
 
     // ─── listarProductosStock (almacen context) ───
     async listarProductosStock(idPlantaAlmacen) {
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         const sql = `
             SELECT ID_PRODUCTO, PRODUCTO, NOMBRE_DETALLE, UNIDAD_MEDIDA_E,
                 SUM(CAST(((CANTIDAD - CANTIDAD_UTILIZADA) / CANTIDAD_ADECUACION) as decimal(10,2))) as CANTIDAD,

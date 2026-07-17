@@ -47,7 +47,7 @@ class ConfiguracionRepository {
     }
 
     async getStockAlmacen(idAlmacen) {
-        const fecha = new Date().toISOString().slice(0, 10);
+        const fecha = new Date().toLocaleDateString('en-CA');
         const sql = `
             SELECT SUM(INV.CANTIDAD) AS CANTIDAD, ID_PRODUCTO
             FROM (

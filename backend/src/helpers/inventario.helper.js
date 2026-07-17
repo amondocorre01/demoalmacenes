@@ -21,7 +21,7 @@ async function listAlmacenUsuario(idUsuario, idAlmacen = 0) {
 }
 
 async function getStockObjByAlmacen(idAlmacen) {
-    const fechaAct = new Date().toISOString().slice(0, 10);
+    const fechaAct = new Date().toLocaleDateString('en-CA');
     const result = await query(`
         SELECT  ID_PRODUCTO_DETALLE,ID_PRODUCTO_INTERMEDIO,ROUND(SUM((CAST((vpai.CANTIDAD-vpai.CANTIDAD_UTILIZADA) as numeric(18,2))/IIF (vpai.UNIDAD_MEDIDA_E=vpai.UNIDAD_MEDIDA_D,vpai.CANTIDAD_ADECUACION,1))),2)as STOCK 
           FROM VISTA_PLANTA_ALMACEN_INVENTARIO vpai WHERE vpai.ESTADO_INGRESO='1' and vpai.ID_PLANTA_ALMACEN =@idAlmacen and vpai.FECHA_VENCIMIENTO>=@fecha
@@ -254,7 +254,7 @@ async function getPrecioProducto(idProducto) {
 }
 
 async function getPrecioProductoIntermedio(idProductoIntermedio) {
-    const fecha = new Date().toISOString().slice(0, 10);
+    const fecha = new Date().toLocaleDateString('en-CA');
     const result = await query(`SELECT dbo.getPrecioRecetaIntermedio(@id, @fecha) AS PRECIO`, [
         { name: 'id', value: idProductoIntermedio },
         { name: 'fecha', value: fecha }
@@ -263,7 +263,7 @@ async function getPrecioProductoIntermedio(idProductoIntermedio) {
 }
 
 async function getProductoConversion(idProducto) {
-    const fecha = new Date().toISOString().slice(0, 10);
+    const fecha = new Date().toLocaleDateString('en-CA');
     const result = await query(`SELECT dbo.getProductoConversion(@id, @fecha) AS PRECIO`, [
         { name: 'id', value: idProducto },
         { name: 'fecha', value: fecha }

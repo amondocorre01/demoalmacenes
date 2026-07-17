@@ -10,7 +10,7 @@ class DeclaracionService {
     }
 
     async obtenerDeclaracionAlmacen(idAlmacen, fecha) {
-        const fechaAct = new Date().toISOString().slice(0, 10);
+        const fechaAct = new Date().toLocaleDateString('en-CA');
         const fechaSel = fecha || fechaAct;
         const fechaInicio = fechaSel + ' 00:00:00';
         const fechaFin = fechaSel + ' 23:59:59';
@@ -55,7 +55,7 @@ class DeclaracionService {
     }
 
     async guardarDeclaracionAlmacen(idAlmacen, { fecha, productos }, idUsuario) {
-        const fechaAct = new Date().toISOString().slice(0, 10);
+        const fechaAct = new Date().toLocaleDateString('en-CA');
         const fechaSel = fecha || fechaAct;
 
         this._validarDatosDeclaracion(idAlmacen, fechaSel, fechaAct, productos);
@@ -73,7 +73,7 @@ class DeclaracionService {
 
         const transaction = await beginTransaction();
         try {
-            const fechaHora = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
             let idDoc = 0;
 
             if (idDocumento > 0) {
