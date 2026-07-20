@@ -1,6 +1,7 @@
 const { EventEmitter } = require('events');
 const { Server } = require('socket.io');
 const webpush = require('web-push');
+const cookie = require("cookie");
 
 const notificationEmitter = new EventEmitter();
 let io = null;
@@ -10,9 +11,8 @@ function initSocketIO(httpServer, corsOptions) {
 
     io.use(async (socket, next) => {
         try {
-            const token = socket.handshake.auth?.token ||
-                socket.handshake.query?.token;
-
+            const cookies = cookie.parse(socket.handshake.headers.cookie || "");
+            const token = cookies.gp_auth || socket.handshake.auth?.token || socket.handshake.query?.token;
             if (!token) {
                 return next(new Error('Token de autenticación requerido'));
             }
@@ -98,8 +98,9 @@ async function enviarPush(userId, data) {
                     title: data.titulo,
                     body: data.mensaje,
                     icon: '/logo.png',
-                    badge: 'https://sistemageneral.capressocafe.com/assets/logo1-c75ff556.png',
+                    badge: '/logo.png',
                     data: {
+                        notificacionId: data.ID_NOTIFICACION || null,
                         modulo: data.referenciaModulo,
                         id: data.referenciaId,
                         sistemaOrigen: data.sistemaOrigen || null
@@ -132,42 +133,67 @@ async function enviarPush(userId, data) {
     }
 }
 
-function notificar(userId, data) {
+async function notificar(userId, data) {
+    let id = null;
+
+    try {
+        const NotifRepo = require('../modules/notificacion/notificacion.repository');
+        id = await NotifRepo.registrar(
+            data.usuarioOrigen || null,
+            userId,
+            data.tipo,
+            data.titulo,
+            data.mensaje,
+            data.referenciaId || null,
+            data.referenciaModulo || null
+        );
+    } catch (err) {
+        console.error('[Notif] Error guardando en BD:', err.message);
+    }
+
+    const dataConId = {
+        ...data,
+        ID_NOTIFICACION: id,
+        timestamp: new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '')
+    };
+
     if (io) {
         const room = `user:${userId}`;
-        console.log(`[Socket.IO] Enviando notificación a sala ${room}: "${data.titulo}"`);
-        io.to(room).emit('notificacion:nueva', {
-            ...data,
-            timestamp: new Date().toISOString()
-        });
+        console.log(`[Socket.IO] Enviando notificación #${id} a sala ${room}: "${data.titulo}"`);
+        io.to(room).emit('notificacion:nueva', dataConId);
     } else {
         console.log('[Socket.IO] io es null, no se puede enviar');
     }
 
-    enviarPush(userId, data);
+    enviarPush(userId, dataConId);
 
-    notificationEmitter.emit('nueva', userId, data);
+    return id;
 }
 
 async function notificarAUsuarios(userIds, data) {
-    if (!userIds || userIds.length === 0) return;
-
-    const enrichedData = {
-        ...data,
-        timestamp: new Date().toISOString()
-    };
+    if (!userIds || userIds.length === 0) return [];
 
     const resultados = await Promise.allSettled(
-        userIds.map(id => notificar(id, enrichedData))
+        userIds.map(id => notificar(id, data))
     );
 
-    const fallidas = resultados.filter(r => r.status === 'rejected');
+    const ids = [];
+    const fallidas = [];
+
+    resultados.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value) {
+            ids.push(r.value);
+        } else {
+            fallidas.push({ userId: userIds[i], error: r.reason?.message || r.reason });
+        }
+    });
+
     if (fallidas.length > 0) {
         console.error(`[Notificar] ${fallidas.length}/${userIds.length} notificaciones fallaron`);
-        fallidas.forEach((r, i) => {
-            console.error(`  → Error:`, r.reason?.message);
-        });
+        fallidas.forEach(f => console.error(`  → Usuario ${f.userId}: ${f.error}`));
     }
+
+    return ids;
 }
 
 function getIO() {

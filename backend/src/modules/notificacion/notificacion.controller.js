@@ -57,7 +57,7 @@ const enviarPrueba = tryCatch(async (req, res) => {
 
     console.log(`[TEST] Admin ${idUsuario} enviando notificación de prueba a usuario ${destId}`);
 
-    notificar(destId, {
+    const id = await notificar(destId, {
         tipo: tipo || 'prueba',
         titulo: titulo || 'Notificación de prueba',
         mensaje: mensaje || 'Esta es una notificación de prueba desde el panel de admin',
@@ -66,7 +66,7 @@ const enviarPrueba = tryCatch(async (req, res) => {
         usuarioOrigen: idUsuario
     });
 
-    res.json({ success: true, message: 'Notificación de prueba enviada', targetUserId: destId });
+    res.json({ success: true, message: 'Notificación de prueba enviada', notificacionId: id, targetUserId: destId });
 });
 
 const pushSubscribe = tryCatch(async (req, res) => {

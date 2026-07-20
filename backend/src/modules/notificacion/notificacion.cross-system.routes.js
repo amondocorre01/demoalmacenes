@@ -31,13 +31,14 @@ router.post('/',
                 referenciaModulo: data.referenciaModulo || req.apiKey.sistema
             };
 
-            notificarAUsuarios(userIds, enrichedData);
+            const ids = await notificarAUsuarios(userIds, enrichedData);
 
-            console.log(`[CrossSystem] Notificación de "${req.apiKey.sistema}" → usuarios: ${userIds.join(',')}`);
+            console.log(`[CrossSystem] Notificación de "${req.apiKey.sistema}" → usuarios: ${userIds.join(',')} | IDs: ${ids.join(',')}`);
 
             res.json({
                 success: true,
-                message: `Notificación enviada a ${userIds.length} usuario(s)`,
+                message: `Notificación enviada a ${ids.length} usuario(s)`,
+                notificacionIds: ids,
                 sistema: req.apiKey.sistema
             });
         } catch (err) {
@@ -92,13 +93,14 @@ router.post('/broadcast',
                 referenciaModulo: data.referenciaModulo || req.apiKey.sistema
             };
 
-            notificarAUsuarios(userIds, enrichedData);
+            const ids = await notificarAUsuarios(userIds, enrichedData);
 
-            console.log(`[CrossSystem] Broadcast de "${req.apiKey.sistema}" → ${userIds.length} usuarios`);
+            console.log(`[CrossSystem] Broadcast de "${req.apiKey.sistema}" → ${ids.length} usuarios | IDs: ${ids.join(',')}`);
 
             res.json({
                 success: true,
-                message: `Broadcast enviado a ${userIds.length} usuario(s)`,
+                message: `Broadcast enviado a ${ids.length} usuario(s)`,
+                notificacionIds: ids,
                 sistema: req.apiKey.sistema
             });
         } catch (err) {
@@ -154,11 +156,12 @@ router.post('/by-ids',
                 referenciaModulo: data.referenciaModulo || req.apiKey.sistema
             };
 
-            notificarAUsuarios(userIds, enrichedData);
+            const ids = await notificarAUsuarios(userIds, enrichedData);
 
             res.json({
                 success: true,
-                message: `Notificación enviada a ${userIds.length} usuario(s)`,
+                message: `Notificación enviada a ${ids.length} usuario(s)`,
+                notificacionIds: ids,
                 matched: userIds.length,
                 sistema: req.apiKey.sistema
             });
