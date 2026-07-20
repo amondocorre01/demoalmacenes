@@ -12,6 +12,9 @@ const modules = [
     { path: '/recetas-intermedias', routes: require('../modules/recetas-intermedias/recetas-intermedias.routes') },
     { path: '/transferencia', routes: require('../modules/transferencia/transferencia.routes') },
     { path: '/seguridad', routes: require('../modules/seguridad/seguridad.routes') },
+    { path: '/notificaciones', routes: require('../modules/notificacion/notificacion.routes') },
+    { path: '/notificaciones/admin', routes: require('../modules/notificacion/notificacion.admin.routes') },
+    { path: '/notify', routes: require('../modules/notificacion/notificacion.cross-system.routes') },
 ];
 
 router.get('/', (req, res) => {

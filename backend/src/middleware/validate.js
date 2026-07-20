@@ -17,6 +17,23 @@ const validate = (schema) => (req, res, next) => {
   }
 };
 
+const validateParams = (schema) => (req, res, next) => {
+  try {
+    req.params = schema.parse(req.params);
+    next();
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const messages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Error de validación en parámetros de ruta',
+        errors: messages
+      });
+    }
+    next(error);
+  }
+};
+
 const validateQuery = (schema) => (req, res, next) => {
   try {
     req.query = schema.parse(req.query);
@@ -34,4 +51,4 @@ const validateQuery = (schema) => (req, res, next) => {
   }
 };
 
-module.exports = { validate, validateQuery };
+module.exports = { validate, validateParams, validateQuery };

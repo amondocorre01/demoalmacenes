@@ -1,5 +1,6 @@
 process.env.TZ = 'America/La_Paz';
 
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -11,6 +12,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 const { getPool, testConnection } = require('./config/database');
+const { initSocketIO, configurarVapid } = require('./helpers/notification.helper');
 
 const authMiddleware = require('./middleware/auth');
 const ErrorHandler = require('./middleware/errorHandler');
@@ -286,7 +288,8 @@ const publicPaths = [
     '/api/health',
     '/api/auth/oauth-state',
     '/api/auth/callback',
-    '/api/permissions/check'
+    '/api/permissions/check',
+    '/api/v1/notify'
 ];
 
 app.use((req, res, next) => {
@@ -415,10 +418,25 @@ async function startServer() {
             console.log('[DB] Conexión exitosa a planta');
         }
 
-        app.listen(PORT, () => {
+        const server = http.createServer(app);
+
+        const io = initSocketIO(server, {
+            cors: { origin: allowedOrigins, credentials: true }
+        });
+
+        configurarVapid(
+            process.env.VAPID_PUBLIC_KEY,
+            process.env.VAPID_PRIVATE_KEY,
+            process.env.VAPID_SUBJECT || 'mailto:admin@capresso.com'
+        );
+
+        app.set('io', io);
+
+        server.listen(PORT, () => {
             console.log(`  Puerto: ${PORT}`);
             console.log(`  Entorno: ${process.env.NODE_ENV}`);
             console.log(`  AuthSystem: ${AUTH_SYSTEM_URL}`);
+            console.log(`  Socket.IO: activo`);
             console.log('===========================================');
             console.log('  Servidor iniciado correctamente');
             console.log(`  Health check: http://localhost:${PORT}/api/health`);

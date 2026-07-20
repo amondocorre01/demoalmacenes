@@ -25,6 +25,7 @@ dist-ssr
 *.sql
 *.md
 backend/uploads
+frontend/public
 # Environment variables
 .env
 .env.local
