@@ -55,8 +55,8 @@ const authMiddleware = async (req, res, next) => {
 
             const roles = rolesResult.recordset.map(r => r.CODIGO_ROL.trim());
             req.user.roles = roles;
-            req.user.isGlobalAdmin = roles.includes('ADMIN_PLANTA');
-            const appCode = process.env.APP_CODE || 'GESTION_PLANTA';
+            req.user.isGlobalAdmin = roles.includes('ADMIN_PLANTA_ALMACEN');
+            const appCode = process.env.APP_CODE || 'GESTION_PLANTA_ALMACEN';
             const permsResult = await query(`
                     SELECT DISTINCT f.CODIGO_FUNCIONALIDAD
                     FROM dbo.vw_MenuUsuario v

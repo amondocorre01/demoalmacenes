@@ -312,7 +312,7 @@ app.get('/api/menu', async (req, res) => {
 
     try {
         
-        const appCode = process.env.APP_CODE || 'GESTION_PLANTA';
+        const appCode = process.env.APP_CODE || 'GESTION_PLANTA_ALMACEN';
         const url = `${process.env.AUTH_SYSTEM_URL}/api/permissions/menu?app_code=${encodeURIComponent(appCode)}`;
         const response = await axios.get(url, {
           headers: {
