@@ -2,9 +2,9 @@ const { query } = require('../../config/database');
 
 class NotificacionRepository {
 
-    async registrar(idUsuarioOrigen, idUsuarioDestino, tipo, titulo, mensaje, referenciaId, referenciaModulo) {
+    async registrar(idUsuarioOrigen, idUsuarioDestino, tipo, titulo, mensaje, referenciaId, referenciaModulo, url) {
         const result = await query(`
-            EXEC SP_NOTIFICACION_REGISTRAR @idOrigen, @idDestino, @tipo, @titulo, @mensaje, @refId, @refModulo
+            EXEC SP_NOTIFICACION_REGISTRAR @idOrigen, @idDestino, @tipo, @titulo, @mensaje, @refId, @refModulo, @url
         `, [
             { name: 'idOrigen', value: idUsuarioOrigen },
             { name: 'idDestino', value: idUsuarioDestino },
@@ -12,7 +12,8 @@ class NotificacionRepository {
             { name: 'titulo', value: titulo },
             { name: 'mensaje', value: mensaje },
             { name: 'refId', value: referenciaId },
-            { name: 'refModulo', value: referenciaModulo }
+            { name: 'refModulo', value: referenciaModulo },
+            { name: 'url', value: url }
         ]);
         return result.recordset[0]?.id || 0;
     }

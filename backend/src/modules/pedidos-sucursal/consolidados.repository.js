@@ -174,6 +174,32 @@ const ConsolidadosRepository = {
         return result.rowsAffected[0] || 0;
     },
 
+    async verificarProductosBloqueados(dbName, sufijo, idCabecera, productos, transaction) {
+        if (!productos || productos.length === 0) return [];
+
+        const conditions = productos.map((_, i) =>
+            `(id.ID_SUBCATEGORIA_2 = @idSub2_${i} AND id.TURNO = @turno_${i})`
+        ).join(' OR ');
+
+        const sqlQuery = `
+            SELECT DISTINCT id.ID_SUBCATEGORIA_2,NOMBRE_PRODUCTO, id.TURNO, id.ESTADO_CONTEO
+            FROM INVENTARIOS_DECLARACION${sufijo} id
+            WHERE id.ID_CABECERA = @idCabecera
+              AND id.ESTADO_CONTEO > 11
+              AND (${conditions})
+        `;
+        const params = [
+            { name: 'idCabecera', value: idCabecera }
+        ];
+        productos.forEach((p, i) => {
+            params.push({ name: `idSub2_${i}`, value: p.idSub2 });
+            params.push({ name: `turno_${i}`, value: p.turno });
+        });
+
+        const result = await execQuery(sqlQuery, params, transaction, dbName);
+        return result.recordset;
+    },
+
     async verifPedidoPrincipal(dbName, sufijo, idCabecera, idSub2, turno, transaction) {
         const sqlQuery = `
             select (case when epaa.ID_ENVIO_PEDIDO_AUX is null and ida.TURNO=@turno then 1 else 0 end) as pedido_principal

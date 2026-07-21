@@ -1,6 +1,9 @@
 const { beginTransaction } = require('../../../config/database');
 const InventarioHelper = require('../../../helpers/inventario.helper');
+const { notificarAUsuarios } = require('../../../helpers/notification.helper');
+const { getUsuariosByPerfil } = require('../../../helpers/usuario.helper');
 const Repo = require('./produccion.repository');
+require('dotenv').config();
 
 class ProduccionService {
 
@@ -160,6 +163,21 @@ class ProduccionService {
                 }
             }
             await transaction.commit();
+            if(data.id_area && data.id_area > 0){
+            //if(true){
+              const perfil = process.env.PERFIL_JEFE_PLANTA || 'Global'
+              const userIds = await getUsuariosByPerfil(perfil);
+              const nombres = productos.map(p => p.producto).filter(Boolean);
+              const mensaje = `Se realizó la producción de los siguientes productos: ${nombres.join(', ')}`;
+              await notificarAUsuarios(userIds, {
+                  tipo: 'produccion',
+                  titulo: 'Producción registrada',
+                  mensaje,
+                  referenciaModulo: 'produccion',
+                  usuarioOrigen: idUsuario
+              });
+            }
+
             return { status: true, message: 'Se guardo correctamente la información.' };
         } catch (error) {
             await transaction.rollback();

@@ -102,6 +102,7 @@ async function enviarPush(userId, data) {
                         notificacionId: data.ID_NOTIFICACION || null,
                         modulo: data.referenciaModulo,
                         id: data.referenciaId,
+                        url: data.url || '',
                         sistemaOrigen: data.sistemaOrigen || null
                     }
                 }));
@@ -135,6 +136,13 @@ async function enviarPush(userId, data) {
 async function notificar(userId, data) {
     let id = null;
 
+    const frontendUrl = data.url || process.env.FRONTEND_URL || '';
+    const modulo = data.referenciaModulo || '';
+    const refId = data.referenciaId || '';
+    const notifUrl = frontendUrl
+        ? `${frontendUrl}/${modulo}${refId ? '/' + refId : ''}`
+        : `/${modulo}${refId ? '/' + refId : ''}`;
+
     try {
         const NotifRepo = require('../modules/notificacion/notificacion.repository');
         id = await NotifRepo.registrar(
@@ -144,7 +152,8 @@ async function notificar(userId, data) {
             data.titulo,
             data.mensaje,
             data.referenciaId || null,
-            data.referenciaModulo || null
+            data.referenciaModulo || null,
+            notifUrl
         );
     } catch (err) {
         logger.error('[Notif] Error guardando en BD:', { error: err.message });
@@ -153,6 +162,7 @@ async function notificar(userId, data) {
     const dataConId = {
         ...data,
         ID_NOTIFICACION: id,
+        url: notifUrl,
         timestamp: new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '')
     };
 

@@ -1,5 +1,7 @@
 const ConsolidadosRepository = require('./consolidados.repository');
 const { SucursalService, TurnoService, StockService, InventarioService } = require('./shared');
+const { notificarAUsuarios } = require('../../helpers/notification.helper');
+const { getUsuariosByPerfil } = require('../../helpers/usuario.helper');
 require('dotenv').config();
 
 const ESTADO_PLANTA = true;
@@ -161,8 +163,45 @@ const ConsolidadosService = {
             sucSuf[suc.CODIGO] = suc.SUFIJO || '';
         }
 
-        let resUpdate = false;
+        const bloqueados = [];
 
+        for (const [codigo, productos] of Object.entries(sucursales)) {
+            const sufijo = sucSuf[codigo] || '';
+            if (!sufijo) continue;
+            const dbName = getDbName(codigo);
+
+            const resCabecera = await ConsolidadosRepository.getCabeceraPedidoByFechaEntrega(dbName, sufijo, fecha);
+            if (!resCabecera) continue;
+
+            const items = productos.map(p => ({
+                idSub2: p.idSub2 || 0,
+                turno: p.turno || ''
+            }));
+
+            const locks = await ConsolidadosRepository.verificarProductosBloqueados(
+                dbName, sufijo, resCabecera.ID_CABECERA, items
+            );
+
+            for (const lock of locks) {
+                bloqueados.push({
+                    sucursal: codigo,
+                    idSub2: lock.ID_SUBCATEGORIA_2,
+                    turno: lock.TURNO,
+                    estado: lock.ESTADO_CONTEO,
+                    sub2: lock.NOMBRE_PRODUCTO
+                });
+            }
+        }
+
+        if (bloqueados.length > 0) {
+            return {
+                success: false,
+                message: 'No se pueden guardar los cambios, existen productos ya procesados.',
+                bloqueados
+            };
+        }
+
+        let resUpdate = false;
         for (const [codigo, productos] of Object.entries(sucursales)) {
             const sufijo = sucSuf[codigo] || '';
             if (!sufijo) continue;
@@ -215,6 +254,16 @@ const ConsolidadosService = {
         }
 
         if (resUpdate) {
+            const perfil = process.env.PERFIL_JEJA_ALMACEN || 'Global'
+            const userIds = await getUsuariosByPerfil(perfil);
+            const mensaje = `Se realizaron cambios en los pedidos de las sucursales, revise el módulo de pedidos.`;
+            await notificarAUsuarios(userIds, {
+                tipo: 'pedido',
+                titulo: 'Pedidos de sucursales actualizados',
+                mensaje,
+                referenciaModulo: 'pedido',
+                usuarioOrigen: idUsuario
+            });
             return { success: true, message: 'Se guardo correctamente los cambios solicitados.' };
         }
         return { success: false, message: 'Ocurrio un error al guardar los cambios.' };
