@@ -6,6 +6,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import CssBaseline from '@mui/material/CssBaseline'
+import { NotificationProvider } from './context/NotificationContext'
 
 // Configurar el idioma de las fechas a español
 dayjs.locale('es');
@@ -19,9 +20,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <ThemeProvider theme={theme}>
         <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
           <CssBaseline />
-          <App />
+          <NotificationProvider>
+            <App />
+          </NotificationProvider>
         </LocalizationProvider>
       </ThemeProvider>
     </StyledEngineProvider>
   </React.StrictMode>,
 )
+

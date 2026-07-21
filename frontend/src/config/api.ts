@@ -79,7 +79,7 @@ api.interceptors.response.use(
       const rawLoginUrl = import.meta.env.VITE_AUTH_LOGIN_URL || 'http://localhost:3003/login';
       const loginUrl = new URL(rawLoginUrl);
 
-      const CLIENT_ID = import.meta.env.VITE_OAUTH_CLIENT_ID || 'gestion-planta';
+      const CLIENT_ID = import.meta.env.VITE_OAUTH_CLIENT_ID || 'gestion-planta-almacen';
       loginUrl.searchParams.append('client_id', CLIENT_ID);
 
       const redirectUri =

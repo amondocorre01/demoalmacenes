@@ -6,7 +6,7 @@ import { Popover, CircularProgress } from '@mui/material';
 import { Apps } from '@mui/icons-material';
 import ConsoleLogMessage from '../../config/console';
 
-const USE_DYNAMIC_MENU = true;
+const USE_DYNAMIC_MENU = false;
 
 interface ApiMenuItem {
   id: number;
