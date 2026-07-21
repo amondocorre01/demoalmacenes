@@ -185,7 +185,7 @@ app.get('/api/auth/callback', async (req, res) => {
         let clientSecret = process.env.OAUTH_CLIENT_SECRET || '';
         
         if (clientIdToUse === 'gestion-planta-almacen') {
-            clientSecret = 'planta_secret_2026';
+            clientSecret = 'planta_almacen_secret_2026';
         }
 
         const basicAuth = Buffer
