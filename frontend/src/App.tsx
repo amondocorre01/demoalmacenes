@@ -41,6 +41,7 @@ import RegistroProduccion from './pages/almacen/registro-produccion/RegistroProd
 
 import PedidosConsolidadosAlmacen from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
 import HelpCenter from './pages/help/HelpCenter';
+import AuthCallback from './pages/auth/Callback';
 
 
 // Placeholder for pages that are not yet migrated
@@ -59,6 +60,7 @@ const App: React.FC = () => {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/help" element={<HelpCenter />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
 
 

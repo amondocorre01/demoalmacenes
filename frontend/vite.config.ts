@@ -40,14 +40,18 @@ export default defineConfig(({ command }) => ({
   base: command === 'serve' ? '/' : '/SistemaDemoPlanta/',
 
   server: {
-    port: 3000,
+    port: 3080,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3081',
         changeOrigin: true,
       },
       '/ocr': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3081',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://localhost:3081',
         changeOrigin: true,
       }
     }
