@@ -1,9 +1,8 @@
-const { EventEmitter } = require('events');
 const { Server } = require('socket.io');
 const webpush = require('web-push');
 const cookie = require("cookie");
+const logger = require('./logger');
 
-const notificationEmitter = new EventEmitter();
 let io = null;
 
 function initSocketIO(httpServer, corsOptions) {
@@ -42,7 +41,7 @@ function initSocketIO(httpServer, corsOptions) {
 
             next();
         } catch (err) {
-            console.error('[Socket.IO Auth] Error:', err.message);
+            logger.error('[Socket.IO Auth] Error:', { error: err.message });
             next(new Error('Error de autenticación'));
         }
     });
@@ -52,40 +51,40 @@ function initSocketIO(httpServer, corsOptions) {
         const room = `user:${userId}`;
 
         socket.join(room);
-        console.log(`[Socket.IO] Usuario ${userId} (${socket.userName}) conectado → sala ${room}`);
+        logger.info(`[Socket.IO] Usuario ${userId} (${socket.userName}) conectado → sala ${room}`);
 
         socket.on('register', (requestedUserId) => {
             if (requestedUserId !== userId) {
-                console.warn(`[Socket.IO] Usuario ${userId} intentó registrarse como ${requestedUserId} - bloqueado`);
+                logger.warn(`[Socket.IO] Usuario ${userId} intentó registrarse como ${requestedUserId} - bloqueado`);
                 socket.emit('error', { message: 'No puedes registrarte como otro usuario' });
                 return;
             }
             socket.join(room);
-            console.log(`[Socket.IO] Usuario ${userId} registrado en sala ${room}`);
+            logger.info(`[Socket.IO] Usuario ${userId} registrado en sala ${room}`);
         });
 
         socket.on('disconnect', () => {
-            console.log(`[Socket.IO] Usuario ${userId} desconectado`);
+            logger.info(`[Socket.IO] Usuario ${userId} desconectado`);
         });
     });
 
-    console.log('[Socket.IO] Servidor de notificaciones inicializado con JWT auth');
+    logger.info('[Socket.IO] Servidor de notificaciones inicializado con JWT auth');
     return io;
 }
 
 function configurarVapid(publicKey, privateKey, subject) {
     if (publicKey && privateKey && subject) {
         webpush.setVapidDetails(subject, publicKey, privateKey);
-        console.log('[Push] VAPID configurado correctamente');
+        logger.info('[Push] VAPID configurado correctamente');
     }
 }
 
 async function enviarPush(userId, data) {
-    console.log(`[Push] Iniciando envío push para usuario ${userId}...`);
+    logger.info(`[Push] Iniciando envío push para usuario ${userId}...`);
     try {
         const PushRepo = require('../modules/notificacion/push-suscripcion.repository');
         const suscripciones = await PushRepo.obtenerPorUsuario(userId);
-        console.log(`[Push] Suscripciones encontradas: ${suscripciones.length}`);
+        logger.info(`[Push] Suscripciones encontradas: ${suscripciones.length}`);
 
         const resultados = await Promise.allSettled(
             suscripciones.map(async (sub) => {
@@ -119,17 +118,17 @@ async function enviarPush(userId, data) {
                     PushRepo.eliminar(suscripciones[i].ENDPOINT);
                     eliminadas++;
                 } else {
-                    console.error(`[Push] Error enviando a ${userId}:`, r.reason?.message);
+                    logger.error(`[Push] Error enviando a ${userId}: ${r.reason?.message}`);
                 }
             }
         });
 
         const enviadas = resultados.filter(r => r.status === 'fulfilled').length;
         if (enviadas > 0 || eliminadas > 0) {
-            console.log(`[Push] Usuario ${userId}: ${enviadas} enviadas, ${eliminadas} expiradas eliminadas`);
+            logger.info(`[Push] Usuario ${userId}: ${enviadas} enviadas, ${eliminadas} expiradas eliminadas`);
         }
     } catch (err) {
-        console.error('[Push] Error obteniendo suscripciones:', err.message);
+        logger.error('[Push] Error obteniendo suscripciones:', { error: err.message });
     }
 }
 
@@ -148,7 +147,7 @@ async function notificar(userId, data) {
             data.referenciaModulo || null
         );
     } catch (err) {
-        console.error('[Notif] Error guardando en BD:', err.message);
+        logger.error('[Notif] Error guardando en BD:', { error: err.message });
     }
 
     const dataConId = {
@@ -159,10 +158,10 @@ async function notificar(userId, data) {
 
     if (io) {
         const room = `user:${userId}`;
-        console.log(`[Socket.IO] Enviando notificación #${id} a sala ${room}: "${data.titulo}"`);
+        logger.info(`[Socket.IO] Enviando notificación #${id} a sala ${room}: "${data.titulo}"`);
         io.to(room).emit('notificacion:nueva', dataConId);
     } else {
-        console.log('[Socket.IO] io es null, no se puede enviar');
+        logger.warn('[Socket.IO] io es null, no se puede enviar');
     }
 
     enviarPush(userId, dataConId);
@@ -189,8 +188,8 @@ async function notificarAUsuarios(userIds, data) {
     });
 
     if (fallidas.length > 0) {
-        console.error(`[Notificar] ${fallidas.length}/${userIds.length} notificaciones fallaron`);
-        fallidas.forEach(f => console.error(`  → Usuario ${f.userId}: ${f.error}`));
+        logger.error(`[Notificar] ${fallidas.length}/${userIds.length} notificaciones fallaron`);
+        fallidas.forEach(f => logger.error(`  → Usuario ${f.userId}: ${f.error}`));
     }
 
     return ids;
@@ -205,6 +204,5 @@ module.exports = {
     configurarVapid,
     notificar,
     notificarAUsuarios,
-    notificationEmitter,
     getIO
 };

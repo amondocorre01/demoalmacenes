@@ -1,4 +1,5 @@
 require('dotenv').config();
+const logger = require('../helpers/logger');
 
 const authMiddleware = async (req, res, next) => {
     try {
@@ -39,10 +40,10 @@ const authMiddleware = async (req, res, next) => {
         const userData = await response.json();
 
         req.user = userData.user;
-        console.log(`[AuthMiddleware] User: ${req.user?.email || 'unknown'}, ID: ${req.user?.id || 'NONE'}`);
+        logger.info(`[AuthMiddleware] User: ${req.user?.email || 'unknown'}, ID: ${req.user?.id || 'NONE'}`);
 
         try {
-            const { query, sql } = require('../config/database');
+            const { query } = require('../config/database');
             const userId = req.user.id || req.user.id_usuario || req.user.ID_USUARIO;
 
             const rolesResult = await query(`
@@ -68,14 +69,14 @@ const authMiddleware = async (req, res, next) => {
                 ],'permisos');
             req.user.permisos = permsResult.recordset.map(p => p.CODIGO_FUNCIONALIDAD.trim());
         } catch (dbErr) {
-            console.error('Error al cargar permisos adicionales:', dbErr.message);
+            logger.error('Error al cargar permisos adicionales:', { error: dbErr.message });
             req.user.roles = req.user.roles || [];
             req.user.permisos = req.user.permisos || [];
         }
 
         next();
     } catch (err) {
-        console.error('Error en middleware de autenticación:', err);
+        logger.error('Error en middleware de autenticación:', { error: err.message });
         return res.status(500).json({
             success: false,
             mensaje: 'Error al validar autenticación'

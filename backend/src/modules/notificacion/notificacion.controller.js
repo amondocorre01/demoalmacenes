@@ -1,6 +1,7 @@
 const { tryCatch } = require('../../helpers/asyncHandler');
 const { getUserId } = require('../../helpers/userContext');
 const { notificar } = require('../../helpers/notification.helper');
+const logger = require('../../helpers/logger');
 const Service = require('./notificacion.service');
 const PushRepo = require('./push-suscripcion.repository');
 
@@ -55,7 +56,7 @@ const enviarPrueba = tryCatch(async (req, res) => {
 
     const destId = targetUserId || idUsuario;
 
-    console.log(`[TEST] Admin ${idUsuario} enviando notificación de prueba a usuario ${destId}`);
+    logger.info(`[TEST] Admin ${idUsuario} enviando notificación de prueba a usuario ${destId}`);
 
     const id = await notificar(destId, {
         tipo: tipo || 'prueba',
@@ -83,7 +84,7 @@ const pushSubscribe = tryCatch(async (req, res) => {
     }
 
     await PushRepo.guardar(idUsuario, endpoint, keys.p256dh, keys.auth);
-    console.log(`[Push] Suscripción guardada para usuario ${idUsuario}`);
+    logger.info(`[Push] Suscripción guardada para usuario ${idUsuario}`);
     res.json({ success: true, message: 'Suscripción push registrada' });
 });
 
@@ -95,7 +96,7 @@ const pushUnsubscribe = tryCatch(async (req, res) => {
     }
 
     await PushRepo.eliminar(endpoint);
-    console.log(`[Push] Suscripción eliminada`);
+    logger.info('[Push] Suscripción eliminada');
     res.json({ success: true, message: 'Suscripción eliminada' });
 });
 

@@ -1,29 +1,37 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const { apiKeyAuth, requirePermission } = require('../../middleware/apiKeyAuth');
 const { notificar, notificarAUsuarios } = require('../../helpers/notification.helper');
 const { query } = require('../../config/database');
+const logger = require('../../helpers/logger');
+const { validate } = require('../../middleware/validate');
+const { notifyBodySchema, notifyBroadcastSchema, notifyByIdsSchema, ALLOWED_ID_FIELDS } = require('./notificacion.validation');
+
+const notifyLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: { success: false, message: 'Demasiadas solicitudes, intente de nuevo en 1 minuto' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const broadcastLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    message: { success: false, message: 'Demasiadas solicitudes de broadcast, intente de nuevo en 1 minuto' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 router.post('/',
+    notifyLimiter,
     apiKeyAuth,
     requirePermission('notify:send'),
+    validate(notifyBodySchema),
     async (req, res) => {
         try {
             const { userIds, data } = req.body;
-
-            if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'userIds debe ser un array con al menos un ID'
-                });
-            }
-
-            if (!data || !data.titulo || !data.mensaje) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'data.titulo y data.mensaje son requeridos'
-                });
-            }
 
             const enrichedData = {
                 ...data,
@@ -33,7 +41,7 @@ router.post('/',
 
             const ids = await notificarAUsuarios(userIds, enrichedData);
 
-            console.log(`[CrossSystem] Notificación de "${req.apiKey.sistema}" → usuarios: ${userIds.join(',')} | IDs: ${ids.join(',')}`);
+            logger.info(`[CrossSystem] Notificación de "${req.apiKey.sistema}" → usuarios: ${userIds.join(',')} | IDs: ${ids.join(',')}`);
 
             res.json({
                 success: true,
@@ -42,25 +50,20 @@ router.post('/',
                 sistema: req.apiKey.sistema
             });
         } catch (err) {
-            console.error('[CrossSystem] Error:', err.message);
+            logger.error('[CrossSystem] Error:', { error: err.message });
             res.status(500).json({ success: false, message: 'Error al enviar notificación' });
         }
     }
 );
 
 router.post('/broadcast',
+    broadcastLimiter,
     apiKeyAuth,
     requirePermission('notify:broadcast'),
+    validate(notifyBroadcastSchema),
     async (req, res) => {
         try {
             const { data, filtros } = req.body;
-
-            if (!data || !data.titulo || !data.mensaje) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'data.titulo y data.mensaje son requeridos'
-                });
-            }
 
             let userIds = [];
 
@@ -95,7 +98,7 @@ router.post('/broadcast',
 
             const ids = await notificarAUsuarios(userIds, enrichedData);
 
-            console.log(`[CrossSystem] Broadcast de "${req.apiKey.sistema}" → ${ids.length} usuarios | IDs: ${ids.join(',')}`);
+            logger.info(`[CrossSystem] Broadcast de "${req.apiKey.sistema}" → ${ids.length} usuarios | IDs: ${ids.join(',')}`);
 
             res.json({
                 success: true,
@@ -104,40 +107,34 @@ router.post('/broadcast',
                 sistema: req.apiKey.sistema
             });
         } catch (err) {
-            console.error('[CrossSystem Broadcast] Error:', err.message);
+            logger.error('[CrossSystem Broadcast] Error:', { error: err.message });
             res.status(500).json({ success: false, message: 'Error al enviar broadcast' });
         }
     }
 );
 
 router.post('/by-ids',
+    notifyLimiter,
     apiKeyAuth,
     requirePermission('notify:send'),
+    validate(notifyByIdsSchema),
     async (req, res) => {
         try {
             const { externalIds, idField, data } = req.body;
 
-            if (!externalIds || !Array.isArray(externalIds) || externalIds.length === 0) {
+            if (!ALLOWED_ID_FIELDS.includes(idField)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'externalIds debe ser un array con al menos un ID'
+                    message: `Campo idField no permitido. Valores permitidos: ${ALLOWED_ID_FIELDS.join(', ')}`
                 });
             }
 
-            if (!data || !data.titulo || !data.mensaje) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'data.titulo y data.mensaje son requeridos'
-                });
-            }
-
-            const field = idField || 'ID_EXTERNO';
             const placeholders = externalIds.map((_, i) => `@ext${i}`).join(',');
             const params = externalIds.map((id, i) => ({ name: `ext${i}`, value: id }));
 
             const result = await query(`
                 SELECT ID_USUARIO FROM USUARIOS
-                WHERE ${field} IN (${placeholders}) AND ESTADO = 1
+                WHERE ${idField} IN (${placeholders}) AND ESTADO = 1
             `, params, 'planta');
 
             const userIds = result.recordset.map(r => r.ID_USUARIO);
@@ -166,7 +163,7 @@ router.post('/by-ids',
                 sistema: req.apiKey.sistema
             });
         } catch (err) {
-            console.error('[CrossSystem ByIds] Error:', err.message);
+            logger.error('[CrossSystem ByIds] Error:', { error: err.message });
             res.status(500).json({ success: false, message: 'Error al enviar notificación' });
         }
     }

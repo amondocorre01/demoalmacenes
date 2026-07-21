@@ -22,6 +22,10 @@ class NotificacionService {
     async marcarTodasLeidas(idUsuario) {
         return await Repo.marcarTodasLeidas(idUsuario);
     }
+
+    async limpiarAntiguas(mesesAntiguedad = 6) {
+        return await Repo.limpiarAntiguas(mesesAntiguedad);
+    }
 }
 
 module.exports = new NotificacionService();

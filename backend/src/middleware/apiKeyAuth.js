@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { query } = require('../config/database');
+const logger = require('../helpers/logger');
 
 const API_KEY_HEADER = 'x-api-key';
 
@@ -35,10 +36,10 @@ const apiKeyAuth = async (req, res, next) => {
             permisos: keyRecord.PERMISOS ? JSON.parse(keyRecord.PERMISOS) : []
         };
 
-        console.log(`[ApiKeyAuth] Sistema autorizado: ${keyRecord.NOMBRE_SISTEMA}`);
+        logger.info(`[ApiKeyAuth] Sistema autorizado: ${keyRecord.NOMBRE_SISTEMA}`);
         next();
     } catch (err) {
-        console.error('[ApiKeyAuth] Error validando API key:', err.message);
+        logger.error('[ApiKeyAuth] Error validando API key:', { error: err.message });
         return res.status(500).json({
             success: false,
             message: 'Error al validar API Key'

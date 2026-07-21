@@ -62,6 +62,13 @@ class NotificacionRepository {
         `, [{ name: 'idUsuario', value: idUsuario }]);
         return result.recordset[0]?.affected > 0;
     }
+
+    async limpiarAntiguas(mesesAntiguedad = 6) {
+        const result = await query(`
+            EXEC SP_NOTIFICACION_LIMPIAR_ANTIGUAS @mesesAntiguedad
+        `, [{ name: 'mesesAntiguedad', value: mesesAntiguedad }]);
+        return result.recordset[0]?.eliminadas || 0;
+    }
 }
 
 module.exports = new NotificacionRepository();
