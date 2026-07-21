@@ -1,5 +1,6 @@
 import Swal from 'sweetalert2';
 import { AxiosError } from 'axios';
+import { authService } from './api';
 
 
 /**
@@ -9,7 +10,7 @@ import { AxiosError } from 'axios';
 
 export const MySwal = Swal.mixin({
   customClass: {
-    popup: 'rounded-[2rem] border-none shadow-2xl bg-surface',
+    popup: 'rounded-[2rem] border-none shadow-2xl bg-surface swal2-highest-z',
     title: 'text-2xl font-black uppercase tracking-tighter text-zinc-900 font-headline',
     htmlContainer: 'text-zinc-600 font-medium font-body',
     confirmButton: 'bg-primary text-on-primary px-8 py-3 rounded-xl font-black uppercase tracking-widest text-xs transition-all hover:scale-105 active:scale-95 mx-2 shadow-lg shadow-primary/20',
@@ -39,6 +40,8 @@ export const Toast = MySwal.mixin({
   }
 });
 
+let apiErrorAlertActive = false;
+
 /**
  * Utilidades de alertas preconfiguradas
  */
@@ -53,6 +56,14 @@ export const showAlert = {
   },
 
   error: (title: string, text?: string) => {
+    if (apiErrorAlertActive) {
+      console.log('[showAlert.error] Ignorado alert de error duplicado o genérico.');
+      return Promise.resolve(false);
+    }
+    if (arguments.length >= 2 && (text === undefined || text === null || text === '')) {
+      console.warn('[showAlert.error] Ignorado alert vacío.');
+      return Promise.resolve(false);
+    }
     return MySwal.fire({
       icon: 'error',
       title,
@@ -104,39 +115,52 @@ export const showAlert = {
 };
 
 interface ApiError {
+  mensaje?: string;
   message?: string;
+  error?: string;
 }
 
 export const handleApiError = (error: unknown) => {
+  if (!error) return;
   const err = error as AxiosError<ApiError>;
 
   let message = 'Ha ocurrido un error inesperado.';
 
   if (err.response) {
     const { status, data } = err.response;
-    message = data?.message || message;
 
-    switch (status) {
-      case 400:
-        message = "Error 400. Datos faltantes o inválidos. ";
-        break;
-      case 401:
-        message = "No autorizado. Inicia sesión nuevamente.";
-        break;
-      case 403:
-        message = "Acceso denegado. No tienes permisos.";
-        break;
-      case 404:
-        message = "Recurso no encontrado.";
-        break;
-      case 422:
-        message = "Error de validación. Revisa los datos.";
-        break;
-      case 500:
-        message = "Error 500. Contactar con soporte.";
-        break;
-      default:
-        message = `Error inesperado (${status}): ` + message;
+    if (status === 401) {
+      // Delegamos la redirección 401 al interceptor en api.ts. No mostramos alerta para no interrumpir el flujo.
+      return;
+    }
+
+    const backendMessage = data?.mensaje || data?.message || data?.error;
+
+    if (backendMessage && typeof backendMessage === 'string') {
+      message = backendMessage;
+    } else {
+      switch (status) {
+        case 400:
+          message = "Error 400. Datos faltantes o inválidos. ";
+          break;
+        case 401:
+          message = "No autorizado. Inicia sesión nuevamente.";
+          break;
+        case 403:
+          message = "Acceso denegado. No tienes permisos.";
+          break;
+        case 404:
+          message = "Error 404. Recurso no encontrado.";
+          break;
+        case 422:
+          message = "Error de validación. Revisa los datos.";
+          break;
+        case 500:
+          message = "Error 500. Contactar con soporte.";
+          break;
+        default:
+          message = `Error inesperado (${status}): ` + message;
+      }
     }
 
   } else if (err.request) {
@@ -144,6 +168,11 @@ export const handleApiError = (error: unknown) => {
   } else if (err.message) {
     message = 'Error de red: ' + err.message;
   }
+
+  apiErrorAlertActive = true;
+  setTimeout(() => {
+    apiErrorAlertActive = false;
+  }, 500);
 
   MySwal.fire({
     icon: 'error',
