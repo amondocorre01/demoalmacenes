@@ -1,6 +1,6 @@
 const { tryCatch } = require('../../helpers/asyncHandler');
 const { getUserId } = require('../../helpers/userContext');
-const { notificar } = require('../../helpers/notification.helper');
+const { notificar, getIO } = require('../../helpers/notification.helper');
 const logger = require('../../helpers/logger');
 const Service = require('./notificacion.service');
 const PushRepo = require('./push-suscripcion.repository');
@@ -34,12 +34,28 @@ const marcarLeida = tryCatch(async (req, res) => {
     const idUsuario = getUserId(req);
     const { id } = req.params;
     const result = await Service.marcarLeida(parseInt(id), idUsuario);
+
+    if (result) {
+        const io = getIO();
+        if (io) {
+            io.to(`user:${idUsuario}`).emit('notificacion:leida', {
+                idNotificacion: parseInt(id)
+            });
+        }
+    }
+
     res.json({ success: result, message: result ? 'Marcada como leída' : 'No encontrada' });
 });
 
 const marcarTodasLeidas = tryCatch(async (req, res) => {
     const idUsuario = getUserId(req);
     await Service.marcarTodasLeidas(idUsuario);
+
+    const io = getIO();
+    if (io) {
+        io.to(`user:${idUsuario}`).emit('notificacion:todasLeidas');
+    }
+
     res.json({ success: true, message: 'Todas marcadas como leídas' });
 });
 
