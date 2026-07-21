@@ -15,6 +15,7 @@ const modules = [
     { path: '/notificaciones', routes: require('../modules/notificacion/notificacion.routes') },
     { path: '/notificaciones/admin', routes: require('../modules/notificacion/notificacion.admin.routes') },
     { path: '/notify', routes: require('../modules/notificacion/notificacion.cross-system.routes') },
+    { path: '/pedidos-sucursal', routes: require('../modules/pedidos-sucursal/consolidados.routes') },
 ];
 
 router.get('/', (req, res) => {
