@@ -10,7 +10,8 @@ class AlmacenService {
 
     async listAlmacen() {
         const result = await Repo.listAlmacen();
-        const data = result.map(row => {
+        const data = [];
+        for (const row of result) {
             let recetas = [];
             if (row.RECETAS) {
                 try {
@@ -23,8 +24,15 @@ class AlmacenService {
                     recetas = [];
                 }
             }
-            return { ...row, RECETAS: recetas };
-        });
+            const config = await Repo.getConfigAlmacen(row.ID_PLANTA_ALMACEN);
+            const solicita_a = config
+                .filter(c => c.ID_ALMACEN_SOLICITANTE === row.ID_PLANTA_ALMACEN)
+                .map(c => ({ id_almacen: c.ID_ALMACEN_DESTINO, estado: c.ESTADO }));
+            const puede_solicitarle = config
+                .filter(c => c.ID_ALMACEN_DESTINO === row.ID_PLANTA_ALMACEN)
+                .map(c => ({ id_almacen: c.ID_ALMACEN_SOLICITANTE, estado: c.ESTADO }));
+            data.push({ ...row, RECETAS: recetas, solicita_a, puede_solicitarle });
+        }
         return data;
     }
 
@@ -52,7 +60,7 @@ class AlmacenService {
         return result;
     }
 
-    async createAlmacen({ almacen, estado_produccion = 0 } = {}) {
+    async createAlmacen({ almacen, estado_produccion = 0, solicitud_planta = 0, gestion_pi = 0, entrega_planta = 0, solicita_a = [], puede_solicitarle = [] } = {}) {
         if (!almacen) {
             throw new AppError('El nombre del almacen es requerido.', 400);
         }
@@ -62,15 +70,30 @@ class AlmacenService {
             throw new AppError('Ya existe un almacen con el mismo nombre.', 409);
         }
 
-        const id = await Repo.crearAlmacen(almacen, estado_produccion);
-        if (!id) {
-            throw new AppError('Ocurrio un error al crear el almacen.', 500);
-        }
+        const transaction = await beginTransaction();
+        try {
+            const id = await Repo.crearAlmacen(almacen, estado_produccion, solicitud_planta, gestion_pi, entrega_planta);
+            if (!id) {
+                await transaction.rollback();
+                throw new AppError('Ocurrio un error al crear el almacen.', 500);
+            }
 
-        return { id };
+            for (const item of solicita_a) {
+                await Repo.crearConfigAlmacen(id, item.id_almacen, item.estado ?? 1);
+            }
+            for (const item of puede_solicitarle) {
+                await Repo.crearConfigAlmacen(item.id_almacen, id, item.estado ?? 1);
+            }
+
+            await transaction.commit();
+            return { id };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
     }
 
-    async updateAlmacen(id, { almacen = '', estado = 0, estado_produccion = 0 } = {}) {
+    async updateAlmacen(id, { almacen = '', estado = 0, estado_produccion = 0, solicitud_planta = 0, gestion_pi = 0, entrega_planta = 0, solicita_a = [], puede_solicitarle = [] } = {}) {
         if (!id) {
             throw new AppError('El id del almacen es requerido.', 400);
         }
@@ -85,12 +108,28 @@ class AlmacenService {
             throw new AppError('Ya existe un almacen con el mismo nombre.', 409);
         }
 
-        const result = await Repo.editarAlmacen(id, almacen, estado, estado_produccion);
-        if (!result) {
-            throw new AppError('Ocurrio un error al actualizar el almacen.', 500);
-        }
+        const transaction = await beginTransaction();
+        try {
+            const result = await Repo.editarAlmacen(id, almacen, estado, estado_produccion, solicitud_planta, gestion_pi, entrega_planta);
+            if (!result) {
+                await transaction.rollback();
+                throw new AppError('Ocurrio un error al actualizar el almacen.', 500);
+            }
 
-        return { message: 'Se ha registrado la informacion correctamente.' };
+            await Repo.eliminarConfigAlmacen(id);
+            for (const item of solicita_a) {
+                await Repo.crearConfigAlmacen(id, item.id_almacen, item.estado ?? 1);
+            }
+            for (const item of puede_solicitarle) {
+                await Repo.crearConfigAlmacen(item.id_almacen, id, item.estado ?? 1);
+            }
+
+            await transaction.commit();
+            return { message: 'Se ha registrado la informacion correctamente.' };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
     }
 
     async createReceta({ nombre = '', id_sub_categoria_2 = 0, id_planta_almacen = 0, productos = [] } = {}) {

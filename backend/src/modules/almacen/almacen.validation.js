@@ -1,15 +1,36 @@
 const { z } = require('zod');
 
+const configAlmacenItemSchema = z.object({
+    id_almacen: z.number().int().positive('id_almacen es requerido'),
+    estado: z.number().optional().default(1)
+}).passthrough();
+
 const createAlmacenSchema = z.object({
     almacen: z.string().min(1, 'El nombre del almacen es requerido'),
-    estado_produccion: z.number().optional().default(0)
-}).passthrough();
+    estado_produccion: z.number().optional().default(0),
+    solicitud_planta: z.number().optional().default(0),
+    gestion_pi: z.number().optional().default(0),
+    entrega_planta: z.number().optional().default(0),
+    solicita_a: z.array(configAlmacenItemSchema).optional().default([]),
+    puede_solicitarle: z.array(configAlmacenItemSchema).optional().default([])
+}).passthrough().refine(
+    (data) => !(data.gestion_pi === 1 && (data.entrega_planta === 1 || data.solicitud_planta === 1)),
+    { message: 'Si GESTION_PI esta activo, ENTREGA_PLANTA y SOLICITUD_PLANTA deben estar desactivados.' }
+);
 
 const updateAlmacenSchema = z.object({
     almacen: z.string().optional().default(''),
     estado: z.number().optional().default(0),
-    estado_produccion: z.number().optional().default(0)
-}).passthrough();
+    estado_produccion: z.number().optional().default(0),
+    solicitud_planta: z.number().optional().default(0),
+    gestion_pi: z.number().optional().default(0),
+    entrega_planta: z.number().optional().default(0),
+    solicita_a: z.array(configAlmacenItemSchema).optional().default([]),
+    puede_solicitarle: z.array(configAlmacenItemSchema).optional().default([])
+}).passthrough().refine(
+    (data) => !(data.gestion_pi === 1 && (data.entrega_planta === 1 || data.solicitud_planta === 1)),
+    { message: 'Si GESTION_PI esta activo, ENTREGA_PLANTA y SOLICITUD_PLANTA deben estar desactivados.' }
+);
 
 const productosRecetaQuerySchema = z.object({
     codigo_tipo: z.coerce.number().int().optional().default(0)

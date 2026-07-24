@@ -55,28 +55,35 @@ class AlmacenRepository {
         return result.recordset.length > 0;
     }
 
-    async crearAlmacen(nombre, estadoProduccion = 0) {
+    async crearAlmacen(nombre, estadoProduccion = 0, solicitudPlanta = 0, gestionPi = 0, entregaPlanta = 0) {
         const result = await query(`
-            INSERT INTO PLANTA_ALMACEN (DESCRICION, ESTADO, ESTADO_PRODUCCION)
-            VALUES (@nombre, 1, @estadoProduccion);
+            INSERT INTO PLANTA_ALMACEN (DESCRICION, ESTADO, ESTADO_PRODUCCION, SOLICITUD_PLANTA, GESTION_PI, ENTREGA_PLANTA)
+            VALUES (@nombre, 1, @estadoProduccion, @solicitudPlanta, @gestionPi, @entregaPlanta);
             SELECT SCOPE_IDENTITY() as id;
         `, [
             { name: 'nombre', value: nombre },
-            { name: 'estadoProduccion', value: estadoProduccion }
+            { name: 'estadoProduccion', value: estadoProduccion },
+            { name: 'solicitudPlanta', value: solicitudPlanta },
+            { name: 'gestionPi', value: gestionPi },
+            { name: 'entregaPlanta', value: entregaPlanta }
         ]);
         return result.recordset[0]?.id || 0;
     }
 
-    async editarAlmacen(idAlmacen, nombre, estado, estadoProduccion) {
+    async editarAlmacen(idAlmacen, nombre, estado, estadoProduccion, solicitudPlanta = 0, gestionPi = 0, entregaPlanta = 0) {
         const result = await query(`
             UPDATE PLANTA_ALMACEN 
-            SET DESCRICION = @nombre, ESTADO = @estado, ESTADO_PRODUCCION = @estadoProduccion
+            SET DESCRICION = @nombre, ESTADO = @estado, ESTADO_PRODUCCION = @estadoProduccion,
+                SOLICITUD_PLANTA = @solicitudPlanta, GESTION_PI = @gestionPi, ENTREGA_PLANTA = @entregaPlanta
             WHERE ID_PLANTA_ALMACEN = @idAlmacen
         `, [
             { name: 'idAlmacen', value: idAlmacen },
             { name: 'nombre', value: nombre },
             { name: 'estado', value: estado },
-            { name: 'estadoProduccion', value: estadoProduccion }
+            { name: 'estadoProduccion', value: estadoProduccion },
+            { name: 'solicitudPlanta', value: solicitudPlanta },
+            { name: 'gestionPi', value: gestionPi },
+            { name: 'entregaPlanta', value: entregaPlanta }
         ]);
         return result.rowsAffected[0] > 0;
     }
@@ -302,6 +309,57 @@ class AlmacenRepository {
             { name: 'idUnidadMedida', value: idUnidadMedida }
         ]);
         return result.rowsAffected[0] > 0;
+    }
+
+    async eliminarConfigAlmacen(idAlmacen) {
+        await query(`
+            UPDATE PLANTA_PEDIDOS_ALMACEN_CONFIG SET ESTADO = 0
+            WHERE ID_ALMACEN_SOLICITANTE = @idAlmacen OR ID_ALMACEN_DESTINO = @idAlmacen
+        `, [{ name: 'idAlmacen', value: idAlmacen }]);
+    }
+
+    async existeConfigAlmacen(idAlmacenSolicitante, idAlmacenDestino) {
+        const result = await query(`
+            SELECT ID_PEDIDOS_ALMACEN_CONFIG FROM PLANTA_PEDIDOS_ALMACEN_CONFIG 
+            WHERE ID_ALMACEN_SOLICITANTE = @idAlmacenSolicitante AND ID_ALMACEN_DESTINO = @idAlmacenDestino
+        `, [
+            { name: 'idAlmacenSolicitante', value: idAlmacenSolicitante },
+            { name: 'idAlmacenDestino', value: idAlmacenDestino }
+        ]);
+        return result.recordset[0]?.ID_PEDIDOS_ALMACEN_CONFIG || 0;
+    }
+
+    async crearConfigAlmacen(idAlmacenSolicitante, idAlmacenDestino, estado = 1) {
+        const existe = await this.existeConfigAlmacen(idAlmacenSolicitante, idAlmacenDestino);
+        if (existe) {
+            await query(`
+                UPDATE PLANTA_PEDIDOS_ALMACEN_CONFIG SET ESTADO = @estado
+                WHERE ID_PEDIDOS_ALMACEN_CONFIG = @id
+            `, [
+                { name: 'id', value: existe },
+                { name: 'estado', value: estado }
+            ]);
+            return existe;
+        }
+        const result = await query(`
+            INSERT INTO PLANTA_PEDIDOS_ALMACEN_CONFIG (ID_ALMACEN_SOLICITANTE, ID_ALMACEN_DESTINO, ESTADO)
+            VALUES (@idAlmacenSolicitante, @idAlmacenDestino, @estado);
+            SELECT SCOPE_IDENTITY() as id;
+        `, [
+            { name: 'idAlmacenSolicitante', value: idAlmacenSolicitante },
+            { name: 'idAlmacenDestino', value: idAlmacenDestino },
+            { name: 'estado', value: estado }
+        ]);
+        return result.recordset[0]?.id || 0;
+    }
+
+    async getConfigAlmacen(idAlmacen) {
+        const result = await query(`
+            SELECT * FROM PLANTA_PEDIDOS_ALMACEN_CONFIG 
+            WHERE (ID_ALMACEN_SOLICITANTE = @idAlmacen OR ID_ALMACEN_DESTINO = @idAlmacen)
+            AND ESTADO = 1
+        `, [{ name: 'idAlmacen', value: idAlmacen }]);
+        return result.recordset;
     }
 }
 
