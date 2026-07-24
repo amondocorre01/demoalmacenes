@@ -21,7 +21,23 @@ class PedidosService {
         if (!productos || productos.length === 0) {
             return { status: false, message: 'No existen datos.' };
         }
-        return { status: true, productos };
+        const agrupados = {};
+        for (const p of productos) {
+            const id = p.ID_PRODUCTO;
+            if (!agrupados[id]) agrupados[id] = [];
+            agrupados[id].push(p);
+        }
+        const resultado = [];
+        for (const id in agrupados) {
+            const grupo = agrupados[id];
+            const todosSinStock = grupo.every(p => p.STOCK === 0);
+            if (todosSinStock) {
+                resultado.push(grupo[0]);
+            } else {
+                resultado.push(...grupo.filter(p => p.STOCK > 0));
+            }
+        }
+        return { status: true, productos: resultado };
     }
 
     async getInventarioPlanta(idArea, idDocumento) {
