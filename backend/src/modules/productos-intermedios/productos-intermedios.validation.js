@@ -7,6 +7,7 @@ const createProductoIntermedioSchema = z.object({
     producto_primario: z.number().optional().default(0),
     nota: z.string().optional().default(''),
     estado_produccion: z.number().optional().default(0),
+    requiere_loteo: z.number().optional().default(0),
     id_planta_almacen: z.number().optional().default(0)
 }).passthrough();
 
@@ -17,7 +18,8 @@ const updateProductoIntermedioSchema = z.object({
     porcentaje_desperdicio: z.number().optional().default(0),
     producto_primario: z.number().optional().default(0),
     nota: z.string().optional().default(''),
-    estado_produccion: z.number().optional().default(0)
+    estado_produccion: z.number().optional().default(0),
+    requiere_loteo: z.number().optional().default(0)
 }).passthrough();
 
 const recetasQuerySchema = z.object({

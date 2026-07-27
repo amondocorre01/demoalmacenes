@@ -49,11 +49,11 @@ class ProductosIntermediosRepository {
         return result.recordset.length > 0;
     }
 
-    async crearProductoIntermedio({ nombre, duracion, porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0 }) {
+    async crearProductoIntermedio({ nombre, duracion, porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0, requiere_loteo = 0 }) {
         const result = await query(`
             INSERT INTO PLANTA_PRODUCTO_INTERMEDIO
-            (NOMBRE, ESTADO, DURACION, PORCENTAJE_DESPERDICIO, PROD_PRIMARIO, NOTA, ESTADO_PRODUCCION)
-            VALUES (@nombre, 1, @duracion, @porcentajeDesperdicio, @productoPrimario, @nota, @estadoProduccion);
+            (NOMBRE, ESTADO, DURACION, PORCENTAJE_DESPERDICIO, PROD_PRIMARIO, NOTA, ESTADO_PRODUCCION, REQUIERE_LOTEO)
+            VALUES (@nombre, 1, @duracion, @porcentajeDesperdicio, @productoPrimario, @nota, @estadoProduccion, @requiereLoteo);
             SELECT SCOPE_IDENTITY() as id;
         `, [
             { name: 'nombre', value: nombre.toUpperCase() },
@@ -61,17 +61,18 @@ class ProductosIntermediosRepository {
             { name: 'porcentajeDesperdicio', value: porcentaje_desperdicio },
             { name: 'productoPrimario', value: producto_primario },
             { name: 'nota', value: nota },
-            { name: 'estadoProduccion', value: estado_produccion }
+            { name: 'estadoProduccion', value: estado_produccion },
+            { name: 'requiereLoteo', value: requiere_loteo }
         ]);
         return result.recordset[0]?.id || 0;
     }
 
-    async editarProductoIntermedio(idProductoIntermedio, { nombre, estado = 0, duracion, porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0 }) {
+    async editarProductoIntermedio(idProductoIntermedio, { nombre, estado = 0, duracion, porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0, requiere_loteo = 0 }) {
         const result = await query(`
             UPDATE PLANTA_PRODUCTO_INTERMEDIO
             SET NOMBRE = @nombre, ESTADO = @estado, DURACION = @duracion,
                 PORCENTAJE_DESPERDICIO = @porcentajeDesperdicio, PROD_PRIMARIO = @productoPrimario,
-                NOTA = @nota, ESTADO_PRODUCCION = @estadoProduccion
+                NOTA = @nota, ESTADO_PRODUCCION = @estadoProduccion, REQUIERE_LOTEO = @requiereLoteo
             WHERE ID_PRODUCTO_INTERMEDIO = @idProductoIntermedio
         `, [
             { name: 'idProductoIntermedio', value: idProductoIntermedio },
@@ -81,7 +82,8 @@ class ProductosIntermediosRepository {
             { name: 'porcentajeDesperdicio', value: porcentaje_desperdicio },
             { name: 'productoPrimario', value: producto_primario },
             { name: 'nota', value: nota },
-            { name: 'estadoProduccion', value: estado_produccion }
+            { name: 'estadoProduccion', value: estado_produccion },
+            { name: 'requiereLoteo', value: requiere_loteo }
         ]);
         return result.rowsAffected[0] > 0;
     }

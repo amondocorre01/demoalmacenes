@@ -7,7 +7,7 @@ class PedidosRepository {
         let sql;
         if (idAlmacen === 0) {
             sql = `SELECT pa.* FROM PLANTA_PERMISO_ALMACEN ppa, PLANTA_ALMACEN pa
-                   WHERE ppa.ID_USUARIO = @idUsuario AND ppa.ESTADO = 1 AND pa.ESTADO = 1
+                   WHERE ppa.ID_USUARIO = @idUsuario AND ppa.ESTADO = 1 AND pa.ESTADO = 1 and SOLICITUD_PLANTA=1
                      AND ppa.ID_PLANTA_ALMACEN = pa.ID_PLANTA_ALMACEN
                    ORDER BY pa.DESCRICION`;
         } else {
