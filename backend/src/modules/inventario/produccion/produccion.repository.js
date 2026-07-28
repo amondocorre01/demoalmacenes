@@ -242,7 +242,11 @@ class ProduccionRepository {
     async getProductosReceta(idReceta) {
         const result = await query(`
             SELECT pr.*, ppd.ID_PRODUCTO_DETALLE, ppd.ID_PRODUCTO, ID_UNIDAD_MEDIDA_ADECUACION as ID_UNIDAD_MEDIDA, CANTIDAD_ADECUACION,
-                (SELECT * FROM PLANTA_PRODUCTO_RECETA ppr WHERE pr.ID_PLANTA_RECETA = ppr.ID_PLANTA_RECETA AND ppr.ESTADO = 1 FOR JSON AUTO) AS PRODUCTOS
+                (SELECT ppr.*,COALESCE(ppi2.NOMBRE,pp.NOMBRE) as NOMBRE
+                 FROM PLANTA_PRODUCTO_RECETA ppr
+                 left join PLANTA_PRODUCTO_INTERMEDIO ppi2 on ppi2.ID_PRODUCTO_INTERMEDIO = ppr.ID_PRODUCTO_INTERMEDIO 
+                 left join PLANTA_PRODUCTO pp on pp.ID_PRODUCTO = ppr.ID_PRODUCTO 
+                WHERE pr.ID_PLANTA_RECETA = ppr.ID_PLANTA_RECETA AND ppr.ESTADO = 1 FOR JSON AUTO) AS PRODUCTOS
             FROM PLANTA_RECETA pr
             LEFT JOIN PLANTA_PRODUCTO_DETALLE ppd ON ppd.ID_SUB_CATEGORIA_2 = pr.ID_SUB_CATEGORIA_2 AND ppd.ESTADO_PRODUCCION=1
             WHERE pr.ID_PLANTA_RECETA = @idReceta
@@ -257,8 +261,10 @@ class ProduccionRepository {
     async getProductosRecestaIntermedio(idAlmacen, idProductoIntermedio) {
         const result = await query(`
             SELECT ppi.*,
-                (SELECT pri.ID_PRODUCTO, CANTIDAD, pri.ID_PRODUCTO_INTERMEDIO_ANTECESOR, ID_UNIDAD_MEDIDA
+                (SELECT pri.ID_PRODUCTO, pri.CANTIDAD, pri.ID_PRODUCTO_INTERMEDIO_ANTECESOR, pri.ID_UNIDAD_MEDIDA,COALESCE(ppi2.NOMBRE,pp.NOMBRE) as NOMBRE
                  FROM PLANTA_RECETA_INTERMEDIO pri
+                 left join PLANTA_PRODUCTO_INTERMEDIO ppi2 on ppi2.ID_PRODUCTO_INTERMEDIO = pri.ID_PRODUCTO_INTERMEDIO_ANTECESOR 
+                 left join PLANTA_PRODUCTO pp on pp.ID_PRODUCTO = pri.ID_PRODUCTO 
                  WHERE pri.ID_PLANTA_RI_PI=ppi.ID_PLANTA_RI_PI AND pri.ESTADO=1 AND pri.NUM_RECETA=ppi.NUM_RECETA FOR JSON AUTO) AS PRODUCTOS
             FROM PLANTA_PRODUCTO_INTERMEDIO_V2 ppi
             WHERE ppi.ID_PRODUCTO_INTERMEDIO = @idProductoIntermedio
@@ -612,6 +618,26 @@ class ProduccionRepository {
             SELECT TOP 1 PRECIO FROM PLANTA_ALMACEN_INVENTARIO WHERE ID_ALMACEN_INVENTARIO = @idInv
         `, [{ name: 'idInv', value: idInv }], 'planta');
         return result.recordset[0]?.PRECIO || 0;
+    }
+
+    async getStockAlmacen(idAlmacen) {
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const result = await query(`
+            SELECT ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO,
+                CAST(SUM(CANTIDAD - ISNULL(CANTIDAD_UTILIZADA, 0)) as numeric(18,2)) as CANTIDAD
+            FROM PLANTA_ALMACEN_INVENTARIO
+            WHERE ID_PLANTA_ALMACEN = @idAlmacen AND ESTADO_INGRESO = 1 AND FECHA_VENCIMIENTO >= @fecha
+            GROUP BY ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO
+        `, [
+            { name: 'idAlmacen', value: idAlmacen },
+            { name: 'fecha', value: fecha }
+        ], 'planta');
+        const stock = {};
+        result.recordset.forEach(r => {
+            const key = `${r.ID_PRODUCTO}_${r.ID_PRODUCTO_INTERMEDIO}`;
+            stock[key] = parseFloat(r.CANTIDAD) || 0;
+        });
+        return stock;
     }
 }
 

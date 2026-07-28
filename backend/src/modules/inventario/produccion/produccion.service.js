@@ -133,6 +133,73 @@ class ProduccionService {
                 }
             }
         }
+
+        await this.validarStock(productos);
+    }
+
+    async validarStock(productos) {
+        const requerimientos = {};
+
+        for (const p of productos) {
+            const idAlmacen = p.id_planta_almacen || 0;
+            const cantidadP = p.cantidad_producida || 0;
+            if (!idAlmacen || !cantidadP) continue;
+
+            if (p.id_planta_receta > 0) {
+                const receta = await Repo.getProductosReceta(p.id_planta_receta);
+                if (!receta || !receta.PRODUCTOS) continue;
+
+                for (const ingrediente of receta.PRODUCTOS) {
+                    const idProd = ingrediente.ID_PRODUCTO || 0;
+                    const idPI = ingrediente.ID_PRODUCTO_INTERMEDIO || ingrediente.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0;
+                    const cantReceta = ingrediente.CANTIDAD || 0;
+                    const key = `${idAlmacen}_${idProd}_${idPI}`;
+
+                    if (!requerimientos[key]) {
+                        requerimientos[key] = { idAlmacen, idProd, idPI, total: 0, nombre: ingrediente.NOMBRE || ingrediente.DESCRIPCION || 'ingrediente' };
+                    }
+                    requerimientos[key].total += cantReceta * cantidadP;
+                }
+            }
+
+            if (p.id_producto_intermedio > 0) {
+                const receta = await Repo.getProductosRecestaIntermedio(idAlmacen, p.id_producto_intermedio);
+                if (!receta || !receta.PRODUCTOS) continue;
+
+                for (const ingrediente of receta.PRODUCTOS) {
+                    const idProd = ingrediente.ID_PRODUCTO || 0;
+                    const idPI = ingrediente.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0;
+                    const cantReceta = ingrediente.CANTIDAD || 0;
+                    const key = `${idAlmacen}_${idProd}_${idPI}`;
+
+                    if (!requerimientos[key]) {
+                        requerimientos[key] = { idAlmacen, idProd, idPI, total: 0, nombre: ingrediente.NOMBRE || 'ingrediente' };
+                    }
+                    requerimientos[key].total += cantReceta * cantidadP;
+                }
+            }
+        }
+
+        const almacenes = [...new Set(Object.values(requerimientos).map(r => r.idAlmacen))];
+        const stockCache = {};
+
+        for (const idAlmacen of almacenes) {
+            stockCache[idAlmacen] = await Repo.getStockAlmacen(idAlmacen);
+        }
+
+        for (const req of Object.values(requerimientos)) {
+            const stock = stockCache[req.idAlmacen] || {};
+            const key = `${req.idProd}_${req.idPI}`;
+            const disponible = stock[key] || 0;
+
+            if (req.total > disponible) {
+              console.log('req   ',req)
+                throw Object.assign(new Error(
+                    `Stock insuficiente de ${req.nombre}. Requiere: ${req.total}, Disponible: ${disponible}`,
+                    { status: 400 }
+                ));
+            }
+        }
     }
 
     async registrarProductosProducidos(data, idUsuario) {
