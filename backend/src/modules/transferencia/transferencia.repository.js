@@ -114,7 +114,7 @@ class TransferenciaRepository {
         const result = await query(`
             SELECT ID_ALMACEN_INVENTARIO, ID_PLANTA_ALMACEN, ID_PRODUCTO_INTERMEDIO,
                    CANTIDAD_UTILIZADA, ID_PRODUCTO_DETALLE, ID_PRODUCTO, ID_UNIDAD_MEDIDA,
-                   FECHA_VENCIMIENTO,
+                   FECHA_VENCIMIENTO, LOTE,
                    CAST((CANTIDAD - CASE WHEN CANTIDAD_UTILIZADA IS NULL THEN 0 ELSE CANTIDAD_UTILIZADA END) as numeric(18,2)) as CANTIDAD
             FROM PLANTA_ALMACEN_INVENTARIO pai
             WHERE pai.${campo} = @idProducto
@@ -135,7 +135,7 @@ class TransferenciaRepository {
         const {
             idAlmacen, idProducto, idIntermedio, cantidad, fechaHora,
             fechaVen, idUsuario, idUnidadMedida, idProducido, ingreso,
-            estado, idInvA, idPD, idDetalleDevol
+            estado, idInvA, idPD, idDetalleDevol, lote = null
         } = data;
         const result = await query(`
             INSERT INTO PLANTA_ALMACEN_INVENTARIO
@@ -143,11 +143,11 @@ class TransferenciaRepository {
              ESTADO_INGRESO, FECHA_REGISTRO, FECHA_VENCIMIENTO, ID_ESTADO,
              USUARIO_REGISTRO, ID_UNIDAD_MEDIDA, ID_PLANTA_PRODUCTO_PRODUCIDO,
              ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN,
-             PRECIO_INGRESO_STOCK)
+             PRECIO_INGRESO_STOCK, LOTE)
             VALUES (@idAlmacen, @idProducto, @idIntermedio, @cantidad,
                     @ingreso, @fechaHora, @fechaVen, @estado,
                     @idUsuario, @idUnidadMedida, @idProducido,
-                    @idInvA, @idPD, @idDetalleDevol, 0);
+                    @idInvA, @idPD, @idDetalleDevol, 0, @lote);
             SELECT SCOPE_IDENTITY() as id;
         `, [
             { name: 'idAlmacen', value: idAlmacen },
@@ -163,7 +163,8 @@ class TransferenciaRepository {
             { name: 'idProducido', value: idProducido },
             { name: 'idInvA', value: idInvA },
             { name: 'idPD', value: idPD },
-            { name: 'idDetalleDevol', value: idDetalleDevol }
+            { name: 'idDetalleDevol', value: idDetalleDevol },
+            { name: 'lote', value: lote }
         ], 'planta', transaction);
         return result.recordset[0]?.id || 0;
     }

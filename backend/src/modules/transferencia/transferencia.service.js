@@ -134,7 +134,8 @@ class TransferenciaService {
                         estado: 1,
                         idInvA: 0,
                         idPD: idProductoDetalle,
-                        idDetalleDevol: 0
+                        idDetalleDevol: 0,
+                        lote: inv.LOTE || null
                     }, transaction);
 
                     await Repo.registraTransfdetalle(idDocIn, idProductoDetalle, idProductoIntermedio, idInvReg, cant, fechaHora, transaction);
