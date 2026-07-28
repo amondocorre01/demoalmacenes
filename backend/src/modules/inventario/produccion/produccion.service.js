@@ -206,32 +206,81 @@ class ProduccionService {
         const fechaVen = await Repo.getFechaVencimiento(idSub2, fecha);
         const idProductoP = await Repo.registrarEnProductoProduc(
             idAlmacen, idReceta, 0, idSub2, cantidadP, cantidadP, cantDesperdicio,
-            fechaHora, idUsuario, detalle, 0
+            fechaHora, idUsuario, detalle, 0, null
         );
         if (!idProductoP) {
             throw Object.assign(new Error('Ocurrio un error al guardar la información.'), { status: 500 });
         }
 
-        await Repo.registrarEnInventarioPlanta(
-            idArea, idProductoP, idSub2, cantidadP * cantAdecuacion,
-            fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0
-        );
+        const piConLoteo = await Repo.getPrimerIntermedioConLoteo(productos);
+
+        const lotesConsumo = [];
+        if (piConLoteo) {
+            const idPI = piConLoteo.ID_PRODUCTO_INTERMEDIO;
+            const prodReceta = productos.find(p =>
+                (p.ID_PRODUCTO_INTERMEDIO || p.ID_PRODUCTO_INTERMEDIO_ANTECESOR) === idPI
+            );
+            const cantReceta = prodReceta.CANTIDAD || 1;
+
+            const lotes = await Repo.getLotesDisponibles(idAlmacen, idPI);
+            let cantPorProducir = cantidadP;
+
+            for (const lote of lotes) {
+                if (cantPorProducir <= 0) break;
+                const unidadesPosibles = Math.floor(lote.CANTIDAD_DISPONIBLE / cantReceta);
+                const cant = Math.min(unidadesPosibles, cantPorProducir);
+                cantPorProducir -= cant;
+
+                if (cant > 0) {
+                    await Repo.registrarEnInventarioPlanta(
+                        idArea, idProductoP, idSub2, cant,
+                        fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, lote.LOTE
+                    );
+                    lotesConsumo.push({ idPI, lote: lote.LOTE, cantidad: Math.round(cant * cantReceta * 100) / 100 });
+                }
+            }
+
+            if (cantPorProducir > 0) {
+                await Repo.registrarEnInventarioPlanta(
+                    idArea, idProductoP, idSub2, cantPorProducir,
+                    fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, null
+                );
+                lotesConsumo.push({ idPI, lote: null, cantidad: Math.round(cantPorProducir * cantReceta * 100) / 100 });
+            }
+        } else {
+            await Repo.registrarEnInventarioPlanta(
+                idArea, idProductoP, idSub2, cantidadP * cantAdecuacion,
+                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, null
+            );
+        }
 
         for (const producto of productos) {
             const idProd = producto.ID_PRODUCTO || 0;
             const idProdAntecesor = producto.ID_PRODUCTO_INTERMEDIO || 0;
             const cantidadD = Math.round(producto.CANTIDAD * cantidadP * 100) / 100;
-            await Repo.registrarDescuentoInvAlmacen(
-                idAlmacen, idProd, idProdAntecesor, idProductoP, cantidadD,
-                idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0
-            );
+
+            if (piConLoteo && idProdAntecesor === piConLoteo.ID_PRODUCTO_INTERMEDIO) {
+                for (const lc of lotesConsumo) {
+                    if (lc.cantidad > 0) {
+                        await Repo.registrarDescuentoInvAlmacen(
+                            idAlmacen, idProd, idProdAntecesor, idProductoP, lc.cantidad,
+                            idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0, lc.lote
+                        );
+                    }
+                }
+            } else {
+                await Repo.registrarDescuentoInvAlmacen(
+                    idAlmacen, idProd, idProdAntecesor, idProductoP, cantidadD,
+                    idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0
+                );
+            }
         }
 
         if (cantDesperdicio > 0) {
             const cantDespAdec = cantDesperdicio * cantAdecuacion;
             const idInvDes = await Repo.registrarEnInventarioPlanta(
                 idArea, 0, idSub2, cantDespAdec,
-                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 0, 4, 0
+                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 0, 4, 0, null
             );
             await Repo.actualizarCantUtzPlanta(cantDespAdec, idInvDes);
             if (idEstado === 15) {
@@ -259,6 +308,10 @@ class ProduccionService {
             throw Object.assign(new Error('La cantidad debe ser mayor a 0.'), { status: 400 });
         }
 
+        let lote = null;
+        if (receta.REQUIERE_LOTEO) {
+            lote = await Repo.generarLote(transaction);
+        }
         const duracion = receta.DURACION || 1;
         const fecha = this._getFecha();
         const fechaHora = this._getFechaHora();
@@ -267,7 +320,7 @@ class ProduccionService {
         const idProducido = await Repo.registrarEnProductoProduc(
             idAlmacen, 0, idProductoIntermedio, 0,
             cantidadP, cantidadP, cantDesperdicio,
-            fechaHora, idUsuario, detalle, idRiPr
+            fechaHora, idUsuario, detalle, idRiPr, lote
         );
 
         if (!idProducido) {
@@ -281,7 +334,7 @@ class ProduccionService {
 
         await InventarioHelper.registrarEnInventarioAlmacen(
             idAlmacen, 0, idProductoIntermedio, cantP,
-            fechaHora, fechaVen, idUsuario, idUnidadMedidaR, idProducido, 1, 1, 0, 0, 0
+            fechaHora, fechaVen, idUsuario, idUnidadMedidaR, idProducido, 1, 1, 0, 0, 0, lote
         );
 
         for (const key in productos) {

@@ -283,16 +283,16 @@ async function calcularPrecioDesperdicio(idProducto, idProductoIntermedio, idPro
     return Math.round(cantidad * precio * 100) / 100;
 }
 
-async function registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idDetalleDevol) {
+async function registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idDetalleDevol, lote = null) {
     const precio = await calcularPrecioInventario(tipo, estadoIngreso, idProducto, idProductoIntermedio, idProductoDetalle);
     const result = await query(`
         INSERT INTO PLANTA_ALMACEN_INVENTARIO
         (ID_PLANTA_ALMACEN, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO, CANTIDAD, ESTADO_INGRESO,
          FECHA_REGISTRO, FECHA_VENCIMIENTO, ID_ESTADO, USUARIO_REGISTRO, ID_UNIDAD_MEDIDA,
-         ID_PLANTA_PRODUCTO_PRODUCIDO, ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN, PRECIO_INGRESO_STOCK)
+         ID_PLANTA_PRODUCTO_PRODUCIDO, ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN, PRECIO_INGRESO_STOCK, LOTE)
         VALUES (@idAlmacen, @idProducto, @idProductoIntermedio, @cantidad, @estadoIngreso,
                 @fechaHora, @fechaVen, @tipo, @idUsuario, @idUnidadInv,
-                @idProducido, @idInvDesc, @idProductoDetalle, @idDetalleDevol, @precio);
+                @idProducido, @idInvDesc, @idProductoDetalle, @idDetalleDevol, @precio, @lote);
         SELECT SCOPE_IDENTITY() as id;
     `, [
         { name: 'idAlmacen', value: idAlmacen },
@@ -309,7 +309,8 @@ async function registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoInt
         { name: 'idInvDesc', value: idInvDesc || 0 },
         { name: 'idProductoDetalle', value: idProductoDetalle || 0 },
         { name: 'idDetalleDevol', value: idDetalleDevol || 0 },
-        { name: 'precio', value: precio }
+        { name: 'precio', value: precio },
+        { name: 'lote', value: lote }
     ]);
     return result.recordset[0]?.id || 0;
 }
@@ -329,7 +330,7 @@ async function actualizarCantUtilizada(idInventario, cantidad, idUsuario) {
 async function getInventarioByProducto(idAlmacen, strWhere, fecha) {
     const result = await query(`
         SELECT pai.* FROM PLANTA_ALMACEN_INVENTARIO pai
-        WHERE pai.ID_PLANTA_ALMACEN = @idAlmacen
+        WHERE pai.ID_PLANTA_ALMACEN = @idAlmacen and ESTADO_INGRESO=1
         AND (pai.CANTIDAD - ISNULL(pai.CANTIDAD_UTILIZADA, 0)) > 0
         AND pai.FECHA_VENCIMIENTO >= @fecha
         AND ${strWhere}

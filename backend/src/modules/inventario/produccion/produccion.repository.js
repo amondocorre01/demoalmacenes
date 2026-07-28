@@ -4,6 +4,74 @@ const PlantaHelpers = require('../../../helpers/planta.helper');
 
 class ProduccionRepository {
 
+    async generarLote(transaction = null) {
+        const anio = new Date().getFullYear();
+        const pool = await getPool();
+        const request = pool.request();
+        if (transaction) request.transaction = transaction;
+
+        request.input('anio', anio);
+        const result = await request.query(`
+            MERGE PLANTA_LOTE_CONTADOR AS target
+            USING (SELECT @anio AS ANIO) AS source
+            ON target.ANIO = source.ANIO
+            WHEN MATCHED THEN
+                UPDATE SET ULTIMO_NUMERO = target.ULTIMO_NUMERO + 1
+            WHEN NOT MATCHED THEN
+                INSERT (ANIO, ULTIMO_NUMERO) VALUES (source.ANIO, 1);
+        `);
+
+        const request2 = pool.request();
+        if (transaction) request2.transaction = transaction;
+        request2.input('anio', anio);
+        const numResult = await request2.query(`
+            SELECT ULTIMO_NUMERO FROM PLANTA_LOTE_CONTADOR WHERE ANIO = @anio
+        `);
+        const numero = numResult.recordset[0]?.ULTIMO_NUMERO || 1;
+        //return `LT-${anio}-${String(numero).padStart(4, '0')}`;
+        return `LT-${String(numero).padStart(4, '0')}`;
+    }
+
+    async getLotesDisponibles(idAlmacen, idProductoIntermedio) {
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const result = await query(`
+            SELECT --pai.ID_ALMACEN_INVENTARIO, 
+                pai.ID_PRODUCTO_DETALLE, pai.ID_UNIDAD_MEDIDA,
+                pai.FECHA_VENCIMIENTO, pai.LOTE,
+                CAST(SUM(pai.CANTIDAD - ISNULL(pai.CANTIDAD_UTILIZADA, 0)) as numeric(18,2)) as CANTIDAD_DISPONIBLE
+            FROM PLANTA_ALMACEN_INVENTARIO pai
+            WHERE pai.ID_PLANTA_ALMACEN = @idAlmacen
+            AND pai.ID_PRODUCTO_INTERMEDIO = @idProductoIntermedio
+            AND pai.ESTADO_INGRESO = 1
+            AND pai.FECHA_VENCIMIENTO >= @fecha
+            AND (pai.CANTIDAD - ISNULL(pai.CANTIDAD_UTILIZADA, 0)) > 0
+            --AND pai.LOTE IS NOT NULL AND pai.LOTE <> ''
+            GROUP BY pai.ID_PRODUCTO_DETALLE, pai.ID_UNIDAD_MEDIDA,pai.FECHA_VENCIMIENTO, pai.LOTE
+            ORDER BY pai.FECHA_VENCIMIENTO ASC
+        `, [
+            { name: 'idAlmacen', value: idAlmacen },
+            { name: 'idProductoIntermedio', value: idProductoIntermedio },
+            { name: 'fecha', value: fecha }
+        ], 'planta');
+        return result.recordset;
+    }
+
+    async getPrimerIntermedioConLoteo(productos) {
+        const ids = productos
+            .map(p => p.ID_PRODUCTO_INTERMEDIO || p.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0)
+            .filter(id => id > 0);
+        if (ids.length === 0) return null;
+        const placeholders = ids.map((_, i) => `@id${i}`).join(',');
+        const params = ids.map((id, i) => ({ name: `id${i}`, value: id }));
+        const result = await query(`
+            SELECT TOP 1 ID_PRODUCTO_INTERMEDIO, REQUIERE_LOTEO
+            FROM PLANTA_PRODUCTO_INTERMEDIO
+            WHERE ID_PRODUCTO_INTERMEDIO IN (${placeholders})
+            AND REQUIERE_LOTEO = 1
+        `, params, 'planta');
+        return result.recordset[0] || null;
+    }
+
     async getAreasByUsuario(idUsuario) {
         const str = '';/* `(SELECT vccb.ID_CUENTA_BANCO,vccb.DESCRIPCION,vccb.NOMBRE_BANCO,RIGHT(NUMERO_CUENTA, 4) as ULT4DIGITOS,MONEDA,TIPO,CODIGO_CONTABLE,NOMBRE_CUENTA_CONTABLE
             FROM VISTA_CONTA_CUENTA_BANCO vccb
@@ -162,15 +230,15 @@ class ProduccionRepository {
         return data;
     }
 
-    async registrarEnProductoProduc(idAlmacen, idReceta, idProductoIntermedio, idSub2, cantidadP, cantidadU, cantDesperdicio, fechaHora, idUsuario, detalle, idRiPr) {
+    async registrarEnProductoProduc(idAlmacen, idReceta, idProductoIntermedio, idSub2, cantidadP, cantidadU, cantDesperdicio, fechaHora, idUsuario, detalle, idRiPr, lote = null) {
         const result = await query(`
             INSERT INTO PLANTA_PRODUCTO_PRODUCIDO
             (ID_PLANTA_ALMACEN, ID_PLANTA_RECETA, ID_PRODUCTO_INTERMEDIO, ID_SUBCATEGORIA_2,
              CANTIDAD_PRODUCIDA, CANTIDAD_UTILIZABLE, CANTIDAD_DESPERDICIO, ESTADO,
-             FECHA_REGISTRO, ID_USUARIO_REGISTRA, DETALLE, ID_PLANTA_RI_PI)
+             FECHA_REGISTRO, ID_USUARIO_REGISTRA, DETALLE, ID_PLANTA_RI_PI, LOTE)
             VALUES (@idAlmacen, @idReceta, @idProductoIntermedio, @idSub2,
                     @cantidadP, @cantidadU, @cantDesperdicio, 1,
-                    @fechaHora, @idUsuario, @detalle, @idRiPr);
+                    @fechaHora, @idUsuario, @detalle, @idRiPr, @lote);
             SELECT SCOPE_IDENTITY() as id;
         `, [
             { name: 'idAlmacen', value: idAlmacen },
@@ -183,20 +251,21 @@ class ProduccionRepository {
             { name: 'fechaHora', value: fechaHora },
             { name: 'idUsuario', value: idUsuario },
             { name: 'detalle', value: detalle },
-            { name: 'idRiPr', value: idRiPr }
+            { name: 'idRiPr', value: idRiPr },
+            { name: 'lote', value: lote }
         ], 'planta');
         return result.recordset[0]?.id || 0;
     }
 
-    async registrarEnInventarioPlanta(idArea, idProductoP, idSub2, cantidad, fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, estadoIngreso, idEstado, idInv) {
+    async registrarEnInventarioPlanta(idArea, idProductoP, idSub2, cantidad, fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, estadoIngreso, idEstado, idInv, lote = null) {
         const result = await query(`
             INSERT INTO PLANTA_INVENTARIO
             (FECHA_VENCIMIENTO, CANTIDAD, ID_PRODUCTO_DETALLE, ID_PRODUCTO, ID_UNIDAD_MEDIDA,
              ID_SUB_CATEGORIA_2, ESTADO_INGRESO, FECHA_REGISTRO, USUARIO_REGISTRO,
-             ID_ESTADO, ID_AREA, ID_INVENTARIO_DESC, ID_PLANTA_PRODUCTO_PRODUCIDO)
+             ID_ESTADO, ID_AREA, ID_INVENTARIO_DESC, ID_PLANTA_PRODUCTO_PRODUCIDO, LOTE)
             VALUES (@fechaVen, @cantidad, @idProductoDetalle, @idProducto, @idUnidad,
                     @idSub2, @estadoIngreso, @fechaHora, @idUsuario,
-                    @idEstado, @idArea, @idInv, @idProductoP);
+                    @idEstado, @idArea, @idInv, @idProductoP, @lote);
             SELECT SCOPE_IDENTITY() as id;
         `, [
             { name: 'fechaVen', value: fechaVen },
@@ -211,7 +280,8 @@ class ProduccionRepository {
             { name: 'idEstado', value: idEstado },
             { name: 'idArea', value: idArea },
             { name: 'idInv', value: idInv },
-            { name: 'idProductoP', value: idProductoP }
+            { name: 'idProductoP', value: idProductoP },
+            { name: 'lote', value: lote }
         ], 'planta');
         return result.recordset[0]?.id || 0;
     }
@@ -225,9 +295,8 @@ class ProduccionRepository {
         ], 'planta');
     }
 
-    async registrarDescuentoInvAlmacen(idAlmacen, idProducto, idProductoIntermedio, idProducido, cantidad, idUsuario, fecha, fechaHora, tipo, detalle, idProductoDetalle, imagen, prctoPrimario) {
+    async registrarDescuentoInvAlmacen(idAlmacen, idProducto, idProductoIntermedio, idProducido, cantidad, idUsuario, fecha, fechaHora, tipo, detalle, idProductoDetalle, imagen, prctoPrimario, lote = null) {
         if (cantidad <= 0) return;
-
         let str;
         if (idProductoIntermedio > 0) {
             str = `pai.ID_PRODUCTO_INTERMEDIO='${idProductoIntermedio}'`;
@@ -240,7 +309,9 @@ class ProduccionRepository {
         if (tipo === 4) {
             str += ` AND pai.ID_PLANTA_PRODUCTO_PRODUCIDO='${idProducido}'`;
         }
-
+        if (lote) {
+            str += ` AND pai.LOTE='${lote}'`;
+        }
         const productoInv = await InventarioHelper.getInventarioByProducto(idAlmacen, str, fecha);
         let cantRestante = cantidad;
 
