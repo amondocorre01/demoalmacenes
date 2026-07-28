@@ -28,7 +28,8 @@ class AjustesService {
                     estado: 9,
                     idInvA: 0,
                     idPD: producto.id_producto_detalle || 0,
-                    idDetalleDevol: 0
+                    idDetalleDevol: 0,
+                    lote: producto.lote || ''
                 }, transaction);
             }
             await transaction.commit();
@@ -78,7 +79,8 @@ class AjustesService {
                         estado: tipo,
                         idInvA: inv.ID_ALMACEN_INVENTARIO,
                         idPD: inv.ID_PRODUCTO_DETALLE,
-                        idDetalleDevol: 0
+                        idDetalleDevol: 0,
+                        lote: null
                     }, transaction);
 
                     await Repo.actualizarCantUtilizada(inv.ID_ALMACEN_INVENTARIO, nuevaCantUtz, idUsuario, transaction);

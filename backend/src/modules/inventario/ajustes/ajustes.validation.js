@@ -7,7 +7,8 @@ const productoAgregarSchema = z.object({
     cantidad: z.number().positive('cantidad es requerida'),
     fecha_vencimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_vencimiento formato YYYY-MM-DD'),
     id_unidad_medida: z.number().int().positive('id_unidad_medida es requerido'),
-    producto: z.string().optional().default('')
+    producto: z.string().optional().default(''),
+    lote: z.string().optional().default('')
 }).passthrough();
 
 const productoDescontarSchema = z.object({

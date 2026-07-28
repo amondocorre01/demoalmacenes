@@ -101,9 +101,9 @@ class DevolucionProductoService {
                     const cant = cantInv <= cantRestante ? cantInv : cantRestante;
                     const newCantUtz = cantUtz + cant;
                     cantRestante = parseInt(cantRestante - cant);
-                    await Repo.registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cant, fechaHora, fechaVenInv, idUsuario, idUnidadInv, 0, 0, 5, idInvA, idPD, idDetalleDevol, transaction);
+                    await Repo.registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cant, fechaHora, fechaVenInv, idUsuario, idUnidadInv, 0, 0, 5, idInvA, idPD, idDetalleDevol, inv.LOTE, transaction);
                     await Repo.actualizarCantUtilizada(idInvA, newCantUtz, idUsuario, transaction);
-                    await Repo.devolProductoAPlanta(idArea, idProducto, cant, fechaHora, fechaVenInv, idUsuario, idUnidadInv, 0, 1, 5, idInvA, idPD, idDetalleDevol, transaction);
+                    await Repo.devolProductoAPlanta(idArea, idProducto, cant, fechaHora, fechaVenInv, idUsuario, idUnidadInv, 0, 1, 5, idInvA, idPD, idDetalleDevol, inv.LOTE, transaction);
                 }
             }
         }

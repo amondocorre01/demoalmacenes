@@ -174,7 +174,7 @@ class DevolucionProductoRepository {
         const sql = `
             SELECT ID_ALMACEN_INVENTARIO, ID_PLANTA_ALMACEN, ID_PRODUCTO_INTERMEDIO,
                 CANTIDAD_UTILIZADA, ID_PRODUCTO_DETALLE, ID_PRODUCTO, ID_UNIDAD_MEDIDA,
-                FECHA_VENCIMIENTO,
+                FECHA_VENCIMIENTO, LOTE,
                 CAST((CANTIDAD - CASE when CANTIDAD_UTILIZADA is null then 0 else CANTIDAD_UTILIZADA end) as numeric(18,2)) as CANTIDAD
             FROM PLANTA_ALMACEN_INVENTARIO pai
             WHERE pai.ID_PRODUCTO = @idProducto
@@ -194,11 +194,11 @@ class DevolucionProductoRepository {
         return result.recordset || [];
     }
 
-    async registrarEnInventarioAlmacen(idAlmacen, idProducto, idIntermedio, cantidad, fecha, fechaVen, idUsuario, idUnidadMedida, idProducido, ingreso, estado, idInvA, idPD, idDetalleDevol, transaction = null) {
+    async registrarEnInventarioAlmacen(idAlmacen, idProducto, idIntermedio, cantidad, fecha, fechaVen, idUsuario, idUnidadMedida, idProducido, ingreso, estado, idInvA, idPD, idDetalleDevol, lote = '', transaction = null) {
         const precio = 0;
         const sql = `INSERT INTO PLANTA_ALMACEN_INVENTARIO
-            (ID_PLANTA_ALMACEN, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO, CANTIDAD, ESTADO_INGRESO, FECHA_REGISTRO, FECHA_VENCIMIENTO, ID_ESTADO, USUARIO_REGISTRO, ID_UNIDAD_MEDIDA, ID_PLANTA_PRODUCTO_PRODUCIDO, ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN, PRECIO_INGRESO_STOCK)
-            VALUES (@idAlmacen, @idProducto, @idIntermedio, @cantidad, @ingreso, @fecha, @fechaVen, @estado, @idUsuario, @idUnidadMedida, @idProducido, @idInvA, @idPD, @idDetalleDevol, @precio);
+            (ID_PLANTA_ALMACEN, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO, CANTIDAD, ESTADO_INGRESO, FECHA_REGISTRO, FECHA_VENCIMIENTO, ID_ESTADO, USUARIO_REGISTRO, ID_UNIDAD_MEDIDA, ID_PLANTA_PRODUCTO_PRODUCIDO, ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN, PRECIO_INGRESO_STOCK, LOTE)
+            VALUES (@idAlmacen, @idProducto, @idIntermedio, @cantidad, @ingreso, @fecha, @fechaVen, @estado, @idUsuario, @idUnidadMedida, @idProducido, @idInvA, @idPD, @idDetalleDevol, @precio, @lote);
             SELECT SCOPE_IDENTITY() as id`;
         const result = await query(sql, [
             { name: 'idAlmacen', value: idAlmacen },
@@ -215,7 +215,8 @@ class DevolucionProductoRepository {
             { name: 'idInvA', value: idInvA },
             { name: 'idPD', value: idPD },
             { name: 'idDetalleDevol', value: idDetalleDevol },
-            { name: 'precio', value: precio }
+            { name: 'precio', value: precio },
+            { name: 'lote', value: lote }
         ], 'planta', transaction);
         return result.recordset?.[0] ? result.recordset[0].id : 0;
     }
@@ -251,7 +252,7 @@ class DevolucionProductoRepository {
         return result.recordset[0] || null;
     }
 
-    async devolProductoAPlanta(idArea, idProducto, cantidad, fecha, fechaVen, idUsuario, idUnidadMedida, idProducido, ingreso, estado, idInvA, idPD, idDetalleDevol, transaction = null) {
+    async devolProductoAPlanta(idArea, idProducto, cantidad, fecha, fechaVen, idUsuario, idUnidadMedida, idProducido, ingreso, estado, idInvA, idPD, idDetalleDevol, lote = '', transaction = null) {
         const dataInv = await this.getDataInv(idInvA, fechaVen, transaction);
         const idCompDetalle = dataInv?.ID_COMPRA_DETALLE || 0;
         const idAlmDetalle = dataInv?.ID_PLANTA_ALMACEN_DETALLE || 0;
@@ -260,9 +261,9 @@ class DevolucionProductoRepository {
         const idRegDetalle = dataInv?.ID_PLANTA_PEDIDO_REG_DETALLE || 0;
         const sql = `INSERT INTO PLANTA_INVENTARIO
             (ID_AREA, ID_PRODUCTO, CANTIDAD, ESTADO_INGRESO, FECHA_REGISTRO, FECHA_VENCIMIENTO, ID_ESTADO, USUARIO_REGISTRO, ID_UNIDAD_MEDIDA, ID_PLANTA_PRODUCTO_PRODUCIDO, ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE,
-             ID_COMPRA_DETALLE, ID_PLANTA_ALMACEN_DETALLE, ID_SUB_CATEGORIA_2, PLANTA_PEDIDO_DETALLE, ID_PLANTA_PEDIDO_REG_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN)
+             ID_COMPRA_DETALLE, ID_PLANTA_ALMACEN_DETALLE, ID_SUB_CATEGORIA_2, PLANTA_PEDIDO_DETALLE, ID_PLANTA_PEDIDO_REG_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN, LOTE)
             VALUES (@idArea, @idProducto, @cantidad, @ingreso, @fecha, @fechaVen, @estado, @idUsuario, @idUnidadMedida, @idProducido, 0, @idPD,
-                    @idCompDetalle, @idAlmDetalle, @idSub2, @idPedidoDetalle, @idRegDetalle, @idDetalleDevol);
+                    @idCompDetalle, @idAlmDetalle, @idSub2, @idPedidoDetalle, @idRegDetalle, @idDetalleDevol, @lote);
                     SELECT SCOPE_IDENTITY() as id`;
         const result = await query(sql, [
             { name: 'idArea', value: idArea },
@@ -281,7 +282,8 @@ class DevolucionProductoRepository {
             { name: 'idSub2', value: idSub2 },
             { name: 'idPedidoDetalle', value: idPedidoDetalle },
             { name: 'idRegDetalle', value: idRegDetalle },
-            { name: 'idDetalleDevol', value: idDetalleDevol }
+            { name: 'idDetalleDevol', value: idDetalleDevol },
+            { name: 'lote', value: lote }
         ], 'planta', transaction);
         return result.recordset?.[0] ? result.recordset[0].id : 0;
     }
