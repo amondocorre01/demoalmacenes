@@ -40,7 +40,7 @@ const registrarProductosProducidos = tryCatch(async (req, res) => {
     const idUsuario = getUserId(req);
     await Service.validarDatosProduccion(req.body);
     const result = await Service.registrarProductosProducidos(req.body, idUsuario);
-    res.json({ success: result.status, message: result.message });
+    res.json({ success: result.status, message: result.message, lotes: result.lotes });
 });
 
 module.exports = {

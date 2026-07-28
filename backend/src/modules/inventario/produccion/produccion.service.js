@@ -138,6 +138,7 @@ class ProduccionService {
     async registrarProductosProducidos(data, idUsuario) {
         const { productos } = data;
         const transaction = await beginTransaction();
+        const lotes = [];
         try {
             for (const p of productos) {
                 const idPlantaReceta = p.id_planta_receta || 0;
@@ -156,15 +157,22 @@ class ProduccionService {
                         cantidadP, cantidadDesperdicio, idUsuario, detalle, idEstado, imagen, transaction
                     );
                 } else if (idProductoIntermedio > 0) {
-                    await this._registrarProductoIntermedioProducido(
+                    const lote = await this._registrarProductoIntermedioProducido(
                         idPlantaAlmacen, idProductoIntermedio, data.id_area,
                         cantidadP, cantidadDesperdicio, idUsuario, detalle, idEstado, imagen, transaction
                     );
+                    if(lote){
+                      lotes.push(
+                        {
+                            producto : p.producto || '',
+                            idProductoIntermedio,
+                            lote
+                        });
+                    }
                 }
             }
             await transaction.commit();
             if(data.id_area && data.id_area > 0){
-            //if(true){
               const perfil = process.env.PERFIL_JEFE_PLANTA || 'Global'
               const userIds = await getUsuariosByPerfil(perfil);
               const nombres = productos.map(p => p.producto).filter(Boolean);
@@ -178,7 +186,7 @@ class ProduccionService {
               });
             }
 
-            return { status: true, message: 'Se guardo correctamente la información.' };
+            return { status: true, message: 'Se guardo correctamente la información.', lotes };
         } catch (error) {
             await transaction.rollback();
             throw error;
@@ -289,6 +297,8 @@ class ProduccionService {
                 await Repo.registrarDesperdicioArea(idArea, idUsuario, idInvDes, idProductoDetalle, idSub2, cantDespAdec, idUnidad, fechaHora, fechaVen, detalle, 14, 0, imagen, 0, transaction);
             }
         }
+
+        return [];
     }
 
     async _registrarProductoIntermedioProducido(idAlmacen, idProductoIntermedio, idArea, cantidadP, cantDesperdicio, idUsuario, detalle, idEstado, imagen, transaction) {
@@ -355,6 +365,8 @@ class ProduccionService {
                 idUsuario, fecha, fechaHora, idEstado, detalle, 0, imagen, prctoPrimario, null, transaction
             );
         }
+
+        return lote;
     }
 }
 
