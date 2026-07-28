@@ -206,7 +206,7 @@ class ProduccionService {
         const fechaVen = await Repo.getFechaVencimiento(idSub2, fecha);
         const idProductoP = await Repo.registrarEnProductoProduc(
             idAlmacen, idReceta, 0, idSub2, cantidadP, cantidadP, cantDesperdicio,
-            fechaHora, idUsuario, detalle, 0, null
+            fechaHora, idUsuario, detalle, 0, null, transaction
         );
         if (!idProductoP) {
             throw Object.assign(new Error('Ocurrio un error al guardar la información.'), { status: 500 });
@@ -234,7 +234,7 @@ class ProduccionService {
                 if (cant > 0) {
                     await Repo.registrarEnInventarioPlanta(
                         idArea, idProductoP, idSub2, cant,
-                        fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, lote.LOTE
+                        fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, lote.LOTE, transaction
                     );
                     lotesConsumo.push({ idPI, lote: lote.LOTE, cantidad: Math.round(cant * cantReceta * 100) / 100 });
                 }
@@ -243,14 +243,14 @@ class ProduccionService {
             if (cantPorProducir > 0) {
                 await Repo.registrarEnInventarioPlanta(
                     idArea, idProductoP, idSub2, cantPorProducir,
-                    fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, null
+                    fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, null, transaction
                 );
                 lotesConsumo.push({ idPI, lote: null, cantidad: Math.round(cantPorProducir * cantReceta * 100) / 100 });
             }
         } else {
             await Repo.registrarEnInventarioPlanta(
                 idArea, idProductoP, idSub2, cantidadP * cantAdecuacion,
-                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, null
+                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 1, 1, 0, null, transaction
             );
         }
 
@@ -264,14 +264,14 @@ class ProduccionService {
                     if (lc.cantidad > 0) {
                         await Repo.registrarDescuentoInvAlmacen(
                             idAlmacen, idProd, idProdAntecesor, idProductoP, lc.cantidad,
-                            idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0, lc.lote
+                            idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0, lc.lote, transaction
                         );
                     }
                 }
             } else {
                 await Repo.registrarDescuentoInvAlmacen(
                     idAlmacen, idProd, idProdAntecesor, idProductoP, cantidadD,
-                    idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0
+                    idUsuario, fecha, fechaHora, 3, '', idProductoDetalle, '', 0, null, transaction
                 );
             }
         }
@@ -280,13 +280,13 @@ class ProduccionService {
             const cantDespAdec = cantDesperdicio * cantAdecuacion;
             const idInvDes = await Repo.registrarEnInventarioPlanta(
                 idArea, 0, idSub2, cantDespAdec,
-                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 0, 4, 0, null
+                fechaHora, fechaVen, idUsuario, idProductoDetalle, idProducto, idUnidad, 0, 4, 0, null, transaction
             );
-            await Repo.actualizarCantUtzPlanta(cantDespAdec, idInvDes);
+            await Repo.actualizarCantUtzPlanta(cantDespAdec, idInvDes, transaction);
             if (idEstado === 15) {
-                await Repo.registrarReposicionArea(idArea, idUsuario, idInvDes, idProductoDetalle, idSub2, cantDespAdec, idUnidad, fechaHora, fechaVen, detalle, idEstado, 0, 0);
+                await Repo.registrarReposicionArea(idArea, idUsuario, idInvDes, idProductoDetalle, idSub2, cantDespAdec, idUnidad, fechaHora, fechaVen, detalle, idEstado, 0, 0, transaction);
             } else {
-                await Repo.registrarDesperdicioArea(idArea, idUsuario, idInvDes, idProductoDetalle, idSub2, cantDespAdec, idUnidad, fechaHora, fechaVen, detalle, 14, 0, imagen, 0);
+                await Repo.registrarDesperdicioArea(idArea, idUsuario, idInvDes, idProductoDetalle, idSub2, cantDespAdec, idUnidad, fechaHora, fechaVen, detalle, 14, 0, imagen, 0, transaction);
             }
         }
     }
@@ -310,7 +310,7 @@ class ProduccionService {
 
         let lote = null;
         if (receta.REQUIERE_LOTEO) {
-            lote = await Repo.generarLote(transaction);
+            lote = await Repo.generarLote(idProductoIntermedio, transaction);
         }
         const duracion = receta.DURACION || 1;
         const fecha = this._getFecha();
@@ -320,7 +320,7 @@ class ProduccionService {
         const idProducido = await Repo.registrarEnProductoProduc(
             idAlmacen, 0, idProductoIntermedio, 0,
             cantidadP, cantidadP, cantDesperdicio,
-            fechaHora, idUsuario, detalle, idRiPr, lote
+            fechaHora, idUsuario, detalle, idRiPr, lote, transaction
         );
 
         if (!idProducido) {
@@ -334,7 +334,7 @@ class ProduccionService {
 
         await InventarioHelper.registrarEnInventarioAlmacen(
             idAlmacen, 0, idProductoIntermedio, cantP,
-            fechaHora, fechaVen, idUsuario, idUnidadMedidaR, idProducido, 1, 1, 0, 0, 0, lote
+            fechaHora, fechaVen, idUsuario, idUnidadMedidaR, idProducido, 1, 1, 0, 0, 0, lote, transaction
         );
 
         for (const key in productos) {
@@ -345,14 +345,14 @@ class ProduccionService {
             const idUnidadMedida = producto.ID_UNIDAD_MEDIDA || 0;
             await Repo.registrarDescuentoInvAlmacen(
                 idAlmacen, idProd, idProdAntecesor, idProducido, cantD,
-                idUsuario, fecha, fechaHora, 3, '', 0, imagen, 0
+                idUsuario, fecha, fechaHora, 3, '', 0, imagen, 0, null, transaction
             );
         }
 
         if (cantDesperdicio > 0) {
             await Repo.registrarDescuentoInvAlmacen(
                 idAlmacen, 0, idProductoIntermedio, idProducido, cantDesperdicio,
-                idUsuario, fecha, fechaHora, idEstado, detalle, 0, imagen, prctoPrimario
+                idUsuario, fecha, fechaHora, idEstado, detalle, 0, imagen, prctoPrimario, null, transaction
             );
         }
     }

@@ -283,7 +283,7 @@ async function calcularPrecioDesperdicio(idProducto, idProductoIntermedio, idPro
     return Math.round(cantidad * precio * 100) / 100;
 }
 
-async function registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idDetalleDevol, lote = null) {
+async function registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoIntermedio, cantidad, fechaHora, fechaVen, idUsuario, idUnidadInv, idProducido, estadoIngreso, tipo, idInvDesc, idProductoDetalle, idDetalleDevol, lote = null, transaction = null) {
     const precio = await calcularPrecioInventario(tipo, estadoIngreso, idProducto, idProductoIntermedio, idProductoDetalle);
     const result = await query(`
         INSERT INTO PLANTA_ALMACEN_INVENTARIO
@@ -311,11 +311,11 @@ async function registrarEnInventarioAlmacen(idAlmacen, idProducto, idProductoInt
         { name: 'idDetalleDevol', value: idDetalleDevol || 0 },
         { name: 'precio', value: precio },
         { name: 'lote', value: lote }
-    ]);
+    ], 'planta', transaction);
     return result.recordset[0]?.id || 0;
 }
 
-async function actualizarCantUtilizada(idInventario, cantidad, idUsuario) {
+async function actualizarCantUtilizada(idInventario, cantidad, idUsuario, transaction = null) {
     await query(`
         UPDATE PLANTA_ALMACEN_INVENTARIO
         SET CANTIDAD_UTILIZADA = @cantidad, ID_USUARIO_MODIFICA = @idUsuario
@@ -324,10 +324,10 @@ async function actualizarCantUtilizada(idInventario, cantidad, idUsuario) {
         { name: 'idInventario', value: idInventario },
         { name: 'cantidad', value: cantidad },
         { name: 'idUsuario', value: idUsuario }
-    ]);
+    ], 'planta', transaction);
 }
 
-async function getInventarioByProducto(idAlmacen, strWhere, fecha) {
+async function getInventarioByProducto(idAlmacen, strWhere, fecha, transaction = null) {
     const result = await query(`
         SELECT pai.* FROM PLANTA_ALMACEN_INVENTARIO pai
         WHERE pai.ID_PLANTA_ALMACEN = @idAlmacen and ESTADO_INGRESO=1
@@ -338,7 +338,7 @@ async function getInventarioByProducto(idAlmacen, strWhere, fecha) {
     `, [
         { name: 'idAlmacen', value: idAlmacen },
         { name: 'fecha', value: fecha }
-    ]);
+    ], 'planta', transaction);
     return result.recordset;
 }
 
