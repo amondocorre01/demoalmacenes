@@ -13,5 +13,19 @@ async function getUsuariosByPerfil(perfil = 'Global') {
     const result = await query(sqlQuery, params, 'default');
     return result.recordset.map(u => u.ID_USUARIO);
 }
+async function getUsuariosByPerfilAndAlmacen(perfil = 'Global',idAlmacen=0) {
+   const usuariosPerfil = await getUsuariosByPerfil(perfil);
+    const sqlQuery = `
+        SELECT ID_USUARIO 
+        FROM PLANTA_PERMISO_ALMACEN ppa
+        WHERE ppa.ID_PLANTA_ALMACEN = @idAlmacen 
+          AND ppa.ESTADO = 1
+    `;
+    const result = await query(sqlQuery, [{ name: 'idAlmacen', value: idAlmacen }], 'planta');
 
-module.exports = { getUsuariosByPerfil };
+    const usuariosAlmacen = result.recordset.map(u => u.ID_USUARIO);
+    const comunes = usuariosPerfil.filter(id => usuariosAlmacen.includes(id));
+    return comunes || [];
+}
+
+module.exports = { getUsuariosByPerfil,getUsuariosByPerfilAndAlmacen };

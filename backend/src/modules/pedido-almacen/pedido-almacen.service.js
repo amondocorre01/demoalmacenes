@@ -1,5 +1,8 @@
 const { beginTransaction } = require('../../config/database');
+const { notificarAUsuarios } = require('../../helpers/notification.helper');
+const { getUsuariosByPerfilAndAlmacen } = require('../../helpers/usuario.helper');
 const Repo = require('./pedido-almacen.repository');
+require('dotenv').config();
 
 class PedidoAlmacenService {
 
@@ -98,6 +101,15 @@ class PedidoAlmacenService {
             }
 
             await transaction.commit();
+            const perfil = process.env.PERFIL_ENCARGADO_ALMACEN || 'Global'
+            const userIds = await getUsuariosByPerfilAndAlmacen(perfil,idAlmacenDestino);
+            await notificarAUsuarios(userIds, {
+                tipo: 'solicitud',
+                titulo: 'Solicitud de Productos',
+                mensaje: 'Tienes solicitud de productos',
+                referenciaModulo: 'pedidos-almacen',
+                usuarioOrigen: idUsuario
+            });
             return { status: true, message: 'Solicitud registrada correctamente.', id_documento: idDocumento };
         } catch (error) {
             await transaction.rollback();
@@ -123,6 +135,19 @@ class PedidoAlmacenService {
         const documento = await Repo.getDocumentoById(idDocumento);
         if (!documento) {
             return { status: false, message: 'No se encontró la solicitud.' };
+        }
+        const idAlmacenDestino = documento.ID_ALMACEN_DESTINO || 0;
+        if (documento.ESTADO === 1) {
+          for (const d of documento.DETALLE ?? []) {
+            const { stock = 0, cantidad_adecuacion = 1 } = 
+              await Repo.getStockByProducto(
+                idAlmacenDestino, 
+                d.ID_PRODUCTO_DETALLE || 0, 
+                d.ID_PRODUCTO_INTERMEDIO || 0
+              );
+            
+            d.STOCK = stock;
+          }
         }
         return { status: true, solicitud: documento };
     }
@@ -186,6 +211,15 @@ class PedidoAlmacenService {
             }
 
             await transaction.commit();
+            const perfil = process.env.PERFIL_ENCARGADO_ALMACEN || 'Global'
+            const userIds = await getUsuariosByPerfilAndAlmacen(perfil,idAlmacenDestino);
+            await notificarAUsuarios(userIds, {
+                tipo: 'solicitud',
+                titulo: 'Solicitud de Productos',
+                mensaje: `El solicitante realizo modificaciones en el pedido ID: ${idDocumento}.`,
+                referenciaModulo: 'pedidos-almacen',
+                usuarioOrigen: idUsuario
+            });
             return { status: true, message: 'Solicitud actualizada correctamente.' };
         } catch (error) {
             await transaction.rollback();
@@ -202,12 +236,105 @@ class PedidoAlmacenService {
             return { status: false, message: 'Solo se pueden enviar solicitudes pendientes.' };
         }
 
+        const idAlmacenDestino = documento.ID_ALMACEN_DESTINO;
+        const idAlmacenSolicitante = documento.ID_ALMACEN_SOLICITANTE;
+
+        const insuficientes = [];
+        const detallesDb = await Repo.getDetallesByDocumento(idDocumento);
+        for (const detalle of detalles) {
+            const idDetalle = detalle.id_detalle || 0;
+            const cantidadEnviada = parseFloat(detalle.cantidad_enviada) || 0;
+            if (!idDetalle || cantidadEnviada <= 0) continue;
+
+            const detDb = detallesDb.find(d => d.ID_ALMACEN_SOLICITUD_DETALLE === idDetalle);
+            if (!detDb) continue;
+
+            const idProductoDetalle = detDb.ID_PRODUCTO_DETALLE || 0;
+            const idProductoIntermedio = detDb.ID_PRODUCTO_INTERMEDIO || 0;
+            const { stock = 0 } = await Repo.getStockByProducto(idAlmacenDestino, idProductoDetalle, idProductoIntermedio);
+
+            if (stock < cantidadEnviada) {
+                insuficientes.push({
+                    id_detalle: idDetalle,
+                    producto: detDb.PRODUCTO || detDb.PRODUCTO_DETALLE || '',
+                    solicitado: cantidadEnviada,
+                    stock
+                });
+            }
+        }
+        if (insuficientes.length > 0) {
+            return {
+                status: false,
+                message: 'Stock insuficiente en el almacén destino para completar el envío.',
+                productos: insuficientes
+            };
+        }
+
+        const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
+
         const transaction = await beginTransaction();
         try {
             for (const detalle of detalles) {
                 const idDetalle = detalle.id_detalle || 0;
                 const cantidadEnviada = parseFloat(detalle.cantidad_enviada) || 0;
-                if (idDetalle && cantidadEnviada >= 0) {
+                if (!idDetalle || cantidadEnviada <= 0) continue;
+
+                const detDb = detallesDb.find(d => d.ID_ALMACEN_SOLICITUD_DETALLE === idDetalle);
+                if (!detDb) continue;
+
+                const idProductoDetalle = detDb.ID_PRODUCTO_DETALLE || 0;
+                const idProductoIntermedio = detDb.ID_PRODUCTO_INTERMEDIO || 0;
+                const campo = idProductoIntermedio > 0 ? 'ID_PRODUCTO_INTERMEDIO' : 'ID_PRODUCTO_DETALLE';
+                const idProd = idProductoIntermedio > 0 ? idProductoIntermedio : idProductoDetalle;
+
+                const inventario = await Repo.getInventarioByProducto(idAlmacenDestino, campo, idProd, transaction);
+                let cantidad = cantidadEnviada;
+
+                for (const inv of inventario) {
+                    if (cantidad <= 0) break;
+                    const cantInv = inv.CANTIDAD;
+                    const cantUtz = (inv.CANTIDAD_UTILIZADA || 0) + Math.min(cantInv, cantidad);
+                    const cant = Math.min(cantInv, cantidad);
+                    cantidad -= cant;
+
+                    await Repo.registrarEnInventarioAlmacen({
+                        idAlmacen: idAlmacenDestino,
+                        idProducto: inv.ID_PRODUCTO,
+                        idIntermedio: idProductoIntermedio,
+                        cantidad: cant,
+                        fechaHora,
+                        fechaVen: inv.FECHA_VENCIMIENTO,
+                        idUsuario,
+                        idUnidadMedida: inv.ID_UNIDAD_MEDIDA,
+                        idProducido: 0,
+                        ingreso: 0,
+                        estado: 4,
+                        idInvA: inv.ID_ALMACEN_INVENTARIO,
+                        idPD: idProductoDetalle,
+                        idDetalleDevol: 0,
+                        lote: inv.LOTE || null
+                    }, transaction);
+
+                    await Repo.actualizarCantUtilizada(inv.ID_ALMACEN_INVENTARIO, cantUtz, idUsuario, transaction);
+
+                    await Repo.registrarEnInventarioAlmacen({
+                        idAlmacen: idAlmacenSolicitante,
+                        idProducto: inv.ID_PRODUCTO,
+                        idIntermedio: idProductoIntermedio,
+                        cantidad: cant,
+                        fechaHora,
+                        fechaVen: inv.FECHA_VENCIMIENTO,
+                        idUsuario,
+                        idUnidadMedida: inv.ID_UNIDAD_MEDIDA,
+                        idProducido: 0,
+                        ingreso: 1,
+                        estado: 1,
+                        idInvA: 0,
+                        idPD: idProductoDetalle,
+                        idDetalleDevol: 0,
+                        lote: inv.LOTE || null
+                    }, transaction);
+
                     await Repo.updateDetalleEnviado(idDetalle, cantidadEnviada, idUsuario, transaction);
                 }
             }
@@ -216,8 +343,18 @@ class PedidoAlmacenService {
             await Repo.registrarRegistro(idUsuario, 2, idDocumento, transaction);
 
             await transaction.commit();
-            return { status: true, message: 'Solicitud enviada correctamente.' };
+            const perfil = process.env.PERFIL_ENCARGADO_ALMACEN || 'Global'
+            const userIds = await getUsuariosByPerfilAndAlmacen(perfil,idAlmacenSolicitante);
+            await notificarAUsuarios(userIds, {
+                tipo: 'solicitud',
+                titulo: 'Solicitud de Productos',
+                mensaje: `La solicitud ID: ${idDocumento} que realizaste ya fue enviada.`,
+                referenciaModulo: 'pedidos-almacen',
+                usuarioOrigen: idUsuario
+            });
+            return { status: true, message: 'Solicitud enviada correctamente. El inventario fue transferido.' };
         } catch (error) {
+            console.log(error)
             await transaction.rollback();
             return { status: false, message: 'Ocurrió un error al enviar la solicitud.' };
         }
@@ -258,8 +395,8 @@ class PedidoAlmacenService {
         if (!documento) {
             return { status: false, message: 'No se encontró la solicitud.' };
         }
-        if (documento.ESTADO === 3 || documento.ESTADO === 4) {
-            return { status: false, message: 'No se puede cancelar una solicitud ya recibida o cancelada.' };
+        if (documento.ESTADO === 2 || documento.ESTADO === 4) {
+            return { status: false, message: 'No se puede cancelar una solicitud ya entregada o cancelada.' };
         }
 
         const transaction = await beginTransaction();

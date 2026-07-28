@@ -325,11 +325,15 @@ class PedidoAlmacenRepository {
     async getDetallesByDocumento(idDocumento) {
         const sql = `
             SELECT dt.*,
-                COALESCE(vppd.PRODUCTO, ppi.NOMBRE) AS PRODUCTO,
-                COALESCE(vppd.NOMBRE_DETALLE, ppi.NOMBRE) AS PRODUCTO_DETALLE
+                COALESCE(vppd.PRODUCTO, ppi.NOMBRE) AS GRUPO,
+                COALESCE(vppd.NOMBRE_DETALLE, ppi.NOMBRE) AS PRODUCTO,
+                coalesce(vppd.CANTIDAD_ESTANDAR, ppi.CANTIDAD_ESTANDAR) as CANTIDAD_ESTANDAR,
+                coalesce(vppd.CANTIDAD_ADECUACION, ppi.CANTIDAD_ADECUACION) as CANTIDAD_ADECUACION,
+                coalesce(vppd.UNIDAD_MEDIDA_E, ppi.UNIDAD_MEDIDA_E) as UNIDAD_MEDIDA_E,
+                coalesce(vppd.UNIDAD_MEDIDA_A, ppi.UNIDAD_MEDIDA_A) as UNIDAD_MEDIDA_A
             FROM PLANTA_ALMACEN_SOLICITUD_DETALLE dt
             LEFT JOIN VISTA_PLANTA_PRODUCTO_DETALLE vppd ON vppd.ID_PRODUCTO_DETALLE = dt.ID_PRODUCTO_DETALLE
-            LEFT JOIN PLANTA_PRODUCTO_INTERMEDIO ppi ON ppi.ID_PRODUCTO_INTERMEDIO = dt.ID_PRODUCTO_INTERMEDIO
+            LEFT JOIN VISTA_PLANTA_PRODUCTO_INTERMEDIO_V2 ppi ON ppi.ID_PRODUCTO_INTERMEDIO = dt.ID_PRODUCTO_INTERMEDIO
             WHERE dt.ID_ALMACEN_SOLICITUD_DOCUMENTO = @idDocumento
         `;
         const result = await query(sql, [{ name: 'idDocumento', value: idDocumento }]);
@@ -367,6 +371,78 @@ class PedidoAlmacenRepository {
             { name: 'fecha', value: fecha }
         ]);
         return result.recordset[0] || {};
+    }
+
+    async getInventarioByProducto(idAlmacen, campo, idProducto, transaction = null) {
+        const fecha = new Date().toLocaleDateString('en-CA');
+        const result = await query(`
+            SELECT ID_ALMACEN_INVENTARIO, ID_PLANTA_ALMACEN, ID_PRODUCTO_INTERMEDIO,
+                   CANTIDAD_UTILIZADA, ID_PRODUCTO_DETALLE, ID_PRODUCTO, ID_UNIDAD_MEDIDA,
+                   FECHA_VENCIMIENTO, LOTE,
+                   CAST((CANTIDAD - CASE WHEN CANTIDAD_UTILIZADA IS NULL THEN 0 ELSE CANTIDAD_UTILIZADA END) as numeric(18,2)) as CANTIDAD
+            FROM PLANTA_ALMACEN_INVENTARIO pai
+            WHERE pai.${campo} = @idProducto
+              AND pai.ID_PLANTA_ALMACEN = @idAlmacen
+              AND pai.ESTADO_INGRESO = 1
+              AND pai.FECHA_VENCIMIENTO >= @fecha
+              AND CAST((CANTIDAD - CASE WHEN CANTIDAD_UTILIZADA IS NULL THEN 0 ELSE CANTIDAD_UTILIZADA END) as numeric(18,2)) > 0
+            ORDER BY FECHA_VENCIMIENTO
+        `, [
+            { name: 'idAlmacen', value: idAlmacen },
+            { name: 'idProducto', value: idProducto },
+            { name: 'fecha', value: fecha }
+        ], 'planta', transaction);
+        return result.recordset || [];
+    }
+
+    async registrarEnInventarioAlmacen(data, transaction = null) {
+        const {
+            idAlmacen, idProducto, idIntermedio, cantidad, fechaHora,
+            fechaVen, idUsuario, idUnidadMedida, idProducido, ingreso,
+            estado, idInvA, idPD, idDetalleDevol, lote = null
+        } = data;
+        const result = await query(`
+            INSERT INTO PLANTA_ALMACEN_INVENTARIO
+            (ID_PLANTA_ALMACEN, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO, CANTIDAD,
+             ESTADO_INGRESO, FECHA_REGISTRO, FECHA_VENCIMIENTO, ID_ESTADO,
+             USUARIO_REGISTRO, ID_UNIDAD_MEDIDA, ID_PLANTA_PRODUCTO_PRODUCIDO,
+             ID_INVENTARIO_DESC, ID_PRODUCTO_DETALLE, ID_DETALLE_DEVOLUCION_ALMACEN,
+             PRECIO_INGRESO_STOCK, LOTE)
+            VALUES (@idAlmacen, @idProducto, @idIntermedio, @cantidad,
+                    @ingreso, @fechaHora, @fechaVen, @estado,
+                    @idUsuario, @idUnidadMedida, @idProducido,
+                    @idInvA, @idPD, @idDetalleDevol, 0, @lote);
+            SELECT SCOPE_IDENTITY() as id;
+        `, [
+            { name: 'idAlmacen', value: idAlmacen },
+            { name: 'idProducto', value: idProducto },
+            { name: 'idIntermedio', value: idIntermedio },
+            { name: 'cantidad', value: cantidad },
+            { name: 'ingreso', value: ingreso },
+            { name: 'fechaHora', value: fechaHora },
+            { name: 'fechaVen', value: fechaVen },
+            { name: 'estado', value: estado },
+            { name: 'idUsuario', value: idUsuario },
+            { name: 'idUnidadMedida', value: idUnidadMedida },
+            { name: 'idProducido', value: idProducido },
+            { name: 'idInvA', value: idInvA },
+            { name: 'idPD', value: idPD },
+            { name: 'idDetalleDevol', value: idDetalleDevol },
+            { name: 'lote', value: lote }
+        ], 'planta', transaction);
+        return result.recordset[0]?.id || 0;
+    }
+
+    async actualizarCantUtilizada(idInventario, cantidad, idUsuario, transaction = null) {
+        await query(`
+            UPDATE PLANTA_ALMACEN_INVENTARIO
+            SET CANTIDAD_UTILIZADA = @cantidad, ID_USUARIO_MODIFICA = @idUsuario
+            WHERE ID_ALMACEN_INVENTARIO = @idInventario
+        `, [
+            { name: 'idInventario', value: idInventario },
+            { name: 'cantidad', value: cantidad },
+            { name: 'idUsuario', value: idUsuario }
+        ], 'planta', transaction);
     }
 }
 
