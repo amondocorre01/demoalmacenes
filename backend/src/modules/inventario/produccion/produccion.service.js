@@ -149,6 +149,17 @@ class ProduccionService {
                 const receta = await Repo.getProductosReceta(p.id_planta_receta);
                 if (!receta || !receta.PRODUCTOS) continue;
 
+                const tieneIntermedio = receta.PRODUCTOS.some(prod => (prod.ID_PRODUCTO_INTERMEDIO || 0) > 0);
+                if (tieneIntermedio) {
+                    const piConLoteo = await Repo.getPrimerIntermedioConLoteo(receta.PRODUCTOS);
+                    if (!piConLoteo) {
+                        throw Object.assign(new Error(
+                            `El producto ${p.producto || ''} tiene una receta con productos intermedios pero ninguno requiere loteo.`,
+                            { status: 400 }
+                        ));
+                    }
+                }
+
                 for (const ingrediente of receta.PRODUCTOS) {
                     const idProd = ingrediente.ID_PRODUCTO || 0;
                     const idPI = ingrediente.ID_PRODUCTO_INTERMEDIO || ingrediente.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0;
