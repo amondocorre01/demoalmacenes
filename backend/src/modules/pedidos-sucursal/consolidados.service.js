@@ -12,10 +12,21 @@ function getDbName(codigo) {
 
 const ConsolidadosService = {
     async listarPedidosConsolidados({ fecha_reporte, tipo_reporte, sucursal: id_sucursal, tipo }) {
-        const sucursales = await SucursalService.getSucursales();
-        const inventarios = await InventarioService.getInventariosSubcategoria2(fecha_reporte, 'ALL');
-        const stocks = await StockService.getStocksPlanta();
-        const turnosAll = await TurnoService.getTurnosAll();
+        const [sucursales, inventarios, stocks, turnosAll] = await Promise.all([
+            SucursalService.getSucursales(),
+            InventarioService.getInventariosSubcategoria2(fecha_reporte, 'ALL'),
+            StockService.getStocksPlanta(),
+            TurnoService.getTurnosAll()
+        ]);
+
+        const pedidosResults = await Promise.all(sucursales.map(suc =>
+            InventarioService.getPedidoSucursalTurno(
+                getDbName(suc.CODIGO), suc.SUFIJO || '', fecha_reporte, tipo_reporte
+            ).catch(e => {
+                console.warn(`[Consolidados] Error al obtener pedidos de sucursal ${suc.CODIGO}: ${e.message}`);
+                return { pedidos: {}, estado_cabecera: 0 };
+            })
+        ));
 
         const listasPedidos = {};
         const estadosCab = {};
@@ -24,125 +35,102 @@ const ConsolidadosService = {
         const cabecera2 = [];
         let codigoSucursal = '';
 
-        for (const suc of sucursales) {
-            const codigo = suc.CODIGO;
-            const idSuc = suc.ID_UBICACION;
-            const dbName = getDbName(codigo);
-            const sufijo = suc.SUFIJO || '';
-            try {
-                const pedidoData = await InventarioService.getPedidoSucursalTurno(dbName, sufijo, fecha_reporte, tipo_reporte);
-                
-                if ((pedidoData.pedidos && Object.keys(pedidoData.pedidos).length > 0 && codigo !== 'feria') ||
-                    (pedidoData.pedidos && Object.keys(pedidoData.pedidos).length > 0 && id_sucursal > 0)) {
-                    listasPedidos[codigo] = pedidoData.pedidos;
-                    estadosCab[codigo] = pedidoData.estado_cabecera || 0;
-                    if (idSuc == id_sucursal || id_sucursal == 0) {
-                        cabecera2.push(codigo);
-                    }
-                    codigoSucursal = idSuc == id_sucursal ? codigo : codigoSucursal;
-                    sucs2[codigo] = idSuc;
-                    sucs[idSuc] = codigo;
-                }
-            } catch (e) {
-                console.warn(`[Consolidados] Error al obtener pedidos de sucursal ${codigo}: ${e.message}`);
+        for (let i = 0; i < sucursales.length; i++) {
+            const { CODIGO: codigo, ID_UBICACION: idSuc } = sucursales[i];
+            const pedidoData = pedidosResults[i];
+
+            if (pedidoData.pedidos && Object.keys(pedidoData.pedidos).length > 0 &&
+                (codigo !== 'feria' || id_sucursal > 0)) {
+                listasPedidos[codigo] = pedidoData.pedidos;
+                estadosCab[codigo] = pedidoData.estado_cabecera || 0;
+                if (idSuc == id_sucursal || id_sucursal == 0) cabecera2.push(codigo);
+                codigoSucursal = idSuc == id_sucursal ? codigo : codigoSucursal;
+                sucs2[codigo] = idSuc;
+                sucs[idSuc] = codigo;
             }
         }
-        
+
         const arrayResponse = [];
         const turnosPedido = {};
         const cabecera = ['Categoria', 'SubCategoria', 'Producto', 'Turno'];
+        const sinFiltroSuc = id_sucursal == 0;
+        const lenSuc = sucursales.length;
 
         for (const inv of inventarios) {
+            if (inv.AREA_PRODUCCION == 2) continue;
+
+            const idSub = inv.ID_SUB_CATEGORIA_2;
+            const grupo = inv.GRUPO;
+            const adec = inv.CANTIDAD_ADECUACION_PEDIDOS || 1;
+            const est = inv.CANTIDAD_ESTANDARIZADA || 1;
+            const adecuacion = grupo == 1 ? adec * est : 1;
+            const stock = Math.round((stocks[idSub] || 0) / adecuacion);
+
+            const fechaVenc = new Date();
+            fechaVenc.setDate(fechaVenc.getDate() + (parseInt(inv.DURACION) || 0));
+            const venc = `${String(fechaVenc.getDate()).padStart(2, '0')}/${String(fechaVenc.getMonth() + 1).padStart(2, '0')}/${fechaVenc.getFullYear()}`;
+
+            const btnProducto = inv.ESTADO_ADECUACION || 0;
+            const cat = inv.CATEGORIA;
+            const sub1 = inv.SUB_CATEGORIA_1;
+            const sub2 = inv.SUB_CATEGORIA_2;
+
             for (const turno of turnosAll) {
                 const nomTurno = turno.TURNO || '';
-                const idTurno = turno.ID_TURNO || 0;
-                const idSubcategoria2 = inv.ID_SUB_CATEGORIA_2;
-                let sum = 0;
-                let sum2 = 0;
-                let existe = false;
-                let pedidoPrincipal = 0;
-                let turnoSol = null;
+                let sum = 0, sum2 = 0, existe = false, pedidoPrincipal = 0, turnoSol = null;
 
                 const item = {
-                    id_sub_categoria_2: idSubcategoria2,
-                    Categoria: inv.CATEGORIA,
-                    SubCategoria: inv.SUB_CATEGORIA_1,
-                    Producto: inv.SUB_CATEGORIA_2,
-                    Turno: nomTurno,
-                    idTurno: idTurno,
-                    btnProducto: inv.ESTADO_ADECUACION || 0
+                    id_sub_categoria_2: idSub,
+                    Categoria: cat, SubCategoria: sub1, Producto: sub2,
+                    Turno: nomTurno, idTurno: turno.ID_TURNO || 0,
+                    btnProducto, Stock: stock, Vencimiento: venc
                 };
 
-                for (const suc of sucursales) {
+                for (let j = 0; j < lenSuc; j++) {
+                    const suc = sucursales[j];
                     const codigo = suc.CODIGO;
-                    const idSuc2 = suc.ID_UBICACION;
-                    const lista = listasPedidos[codigo] || {};
-                    const pedido = (lista[idSubcategoria2] || {})[nomTurno] || null;
+                    const pedido = listasPedidos[codigo]?.[idSub]?.[nomTurno];
 
-                    const totalSuc = pedido ? (pedido.cantidad_solicitada || 0) : 0;
-                    const totalEnv = pedido ? (pedido.cantidad_enviada || 0) : 0;
-                    const estadoP = pedido ? (pedido.estado || 0) : 0;
-                    const estadoCabecera = estadosCab[codigo] || 0;
+                    const totalEnv = pedido?.cantidad_enviada || 0;
+                    const estadoP = pedido?.estado || 0;
 
                     if (pedido) {
                         turnoSol = turnoSol || pedido.turnoSol || '';
-                        const pp = pedido.pedido_principal || 0;
-                        pedidoPrincipal = pedidoPrincipal == 1 ? pedidoPrincipal : pp;
+                        if (pedidoPrincipal == 0) pedidoPrincipal = pedido.pedido_principal || 0;
                         existe = existe || (estadoP >= 9);
+                        if (estadoP == 11) { sum += totalEnv; }
+                        else if (estadoP > 11) { sum2 += totalEnv; }
                     }
 
-                    const obj = {
-                        id_producto_detalle: pedido ? (pedido.id_producto_detalle || 0) : 0,
-                        cantidad_solicitada: totalSuc,
-                        cantidad_enviada: totalEnv,
-                        estado: estadoCabecera >= 12 ? estadoCabecera : estadoP
-                    };
-
-                    if (id_sucursal == 0 || id_sucursal == idSuc2) {
-                        item[codigo] = obj;
+                    if (sinFiltroSuc || id_sucursal == suc.ID_UBICACION) {
+                        const ec = estadosCab[codigo] || 0;
+                        item[codigo] = {
+                            id_producto_detalle: pedido?.id_producto_detalle || 0,
+                            cantidad_solicitada: pedido?.cantidad_solicitada || 0,
+                            cantidad_enviada: totalEnv,
+                            estado: ec >= 12 ? ec : estadoP
+                        };
                     }
-
-                    if (estadoP == 11) sum += totalEnv;
-                    if (estadoP > 11) sum2 += totalEnv;
                 }
 
-                const grupo = inv.GRUPO;
-                const adecuacionVal = inv.CANTIDAD_ADECUACION_PEDIDOS || 1;
-                const estandar = inv.CANTIDAD_ESTANDARIZADA || 1;
-                const adecuacion = grupo == 1 ? adecuacionVal * estandar : 1;
-                const cantStock = stocks[idSubcategoria2] || 0;
-                item.Stock = Math.round((cantStock > 0 ? (cantStock / adecuacion) : 0) );
+                const pasaTipo = tipo == 0 || (tipo == 1 && stock < sum) || (tipo == 2 && stock >= sum);
+                if (!existe || !pasaTipo) continue;
 
-                const duracion = parseInt(inv.DURACION) || 0;
-                const fechaVenc = new Date();
-                fechaVenc.setDate(fechaVenc.getDate() + duracion);
-                const dd = String(fechaVenc.getDate()).padStart(2, '0');
-                const mm = String(fechaVenc.getMonth() + 1).padStart(2, '0');
-                const yyyy = fechaVenc.getFullYear();
-                item.Vencimiento = `${dd}/${mm}/${yyyy}`;
-                if (inv.AREA_PRODUCCION != 2 && existe &&
-                    (tipo == 0 || (tipo == 1 && item.Stock < sum) || (tipo == 2 && item.Stock >= sum))) {
-                    if (!turnosPedido[idSubcategoria2]) {
-                        turnosPedido[idSubcategoria2] = [];
-                    }
-                    if (pedidoPrincipal == 0) {
-                        turnosPedido[idSubcategoria2].push(nomTurno);
-                    }
+                if (!turnosPedido[idSub]) turnosPedido[idSub] = [];
+                if (pedidoPrincipal == 0) turnosPedido[idSub].push(nomTurno);
 
-                    item.Total = sum;
-                    item.estadoStock = item.Stock >= sum;
-                    item.Total_enviado = sum2;
-                    item.pedido_principal = pedidoPrincipal;
-                    item.turnoSol = turnoSol;
-                    arrayResponse.push(item);
-                }
+                item.Total = sum;
+                item.estadoStock = stock >= sum;
+                item.Total_enviado = sum2;
+                item.pedido_principal = pedidoPrincipal;
+                item.turnoSol = turnoSol;
+                arrayResponse.push(item);
             }
         }
 
-        cabecera.push('Total');
-        cabecera.push('Vencimiento');
+        cabecera.push('Total', 'Vencimiento');
 
-        const respuesta = {
+        return {
             success: true,
             cabecera2: cabecera,
             estado_planta: ESTADO_PLANTA,
@@ -153,7 +141,6 @@ const ConsolidadosService = {
             consolidados: arrayResponse,
             turnosPedido
         };
-        return respuesta;
     },
 
     async guardarPedidosConsolidados({ fecha, sucursales, idUsuario }) {
