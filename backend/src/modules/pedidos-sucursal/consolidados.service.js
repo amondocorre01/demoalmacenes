@@ -11,7 +11,7 @@ function getDbName(codigo) {
 }
 
 const ConsolidadosService = {
-    async listarPedidosConsolidados({ fecha_reporte, tipo_reporte, sucursal: id_sucursal, tipo }) {
+    async listarPedidosConsolidados({ fecha_reporte, tipo_reporte, sucursal: id_sucursal, tipo, producible }) {
         const [sucursales, inventarios, stocks, turnosAll] = await Promise.all([
             SucursalService.getSucursales(),
             InventarioService.getInventariosSubcategoria2(fecha_reporte, 'ALL'),
@@ -126,6 +126,59 @@ const ConsolidadosService = {
                 item.turnoSol = turnoSol;
                 arrayResponse.push(item);
             }
+        }
+
+        if (producible) {
+            const itemsConTotal = arrayResponse.filter(i => (i.Total-i.Total_enviado) > 0);
+            if (itemsConTotal.length > 0) {
+                const idsSub = [...new Set(itemsConTotal.map(i => i.id_sub_categoria_2))];
+
+                const [ingredientes, almacenes] = await Promise.all([
+                    ConsolidadosRepository.getRecetaIngredientes(idsSub),
+                    ConsolidadosRepository.getAlmacenesBySubcategorias(idsSub)
+                ]);
+
+                const ingBySub = {};
+                for (const ing of ingredientes) {
+                    (ingBySub[ing.ID_SUB_CATEGORIA_2] = ingBySub[ing.ID_SUB_CATEGORIA_2] || []).push(ing);
+                }
+                const almBySub = {};
+                for (const alm of almacenes) {
+                    (almBySub[alm.ID_SUB_CATEGORIA_2] = almBySub[alm.ID_SUB_CATEGORIA_2] || []).push(alm);
+                }
+
+                const allAlmIds = [...new Set(almacenes.map(a => a.ID_PLANTA_ALMACEN))];
+                const stockRows = await ConsolidadosRepository.getStockIngredientes(allAlmIds, fecha_reporte);
+
+                const stockMap = {};
+                for (const row of stockRows) {
+                    stockMap[`${row.ID_PLANTA_ALMACEN}_${row.ID_PRODUCTO}_${row.ID_PRODUCTO_INTERMEDIO}`] = row.CANTIDAD;
+                }
+
+                for (const item of itemsConTotal) {
+                    const ings = ingBySub[item.id_sub_categoria_2] || [];
+                    const alms = almBySub[item.id_sub_categoria_2] || [];
+
+                    if (ings.length === 0 || alms.length === 0) {
+                        item.producible = 0;
+                        continue;
+                    }
+
+                    let minProducible = Infinity;
+                    for (const ing of ings) {
+                        let stockTotal = 0;
+                        for (const alm of alms) {
+                            stockTotal += stockMap[`${alm.ID_PLANTA_ALMACEN}_${ing.ID_PRODUCTO}_${ing.ID_PRODUCTO_INTERMEDIO}`] || 0;
+                        }
+                        const cant = ing.CANTIDAD > 0 ? Math.floor(stockTotal / ing.CANTIDAD) : 0;
+                        if (cant < minProducible) minProducible = cant;
+                    }
+                    item.producible = minProducible === Infinity ? 0 : minProducible;
+                }
+            }
+        }
+        for (const item of arrayResponse) {
+            if (item.producible === undefined) item.producible = 0;
         }
 
         cabecera.push('Total', 'Vencimiento');

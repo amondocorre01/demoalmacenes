@@ -3,14 +3,15 @@ const ConsolidadosService = require('./consolidados.service');
 const ConsolidadosController = {
     async listarPedidos(req, res, next) {
         try {
-            const { fecha_reporte, tipo_reporte, sucursal, tipo } = req.query;
+            const { fecha_reporte, tipo_reporte, sucursal, tipo, producible } = req.query;
             if (!fecha_reporte || !tipo_reporte) {
                 return res.status(400).json({ success: false, message: 'fecha_reporte y tipo_reporte son requeridos' });
             }
             const result = await ConsolidadosService.listarPedidosConsolidados({
                 fecha_reporte, tipo_reporte,
                 sucursal: sucursal ? parseInt(sucursal) : 0,
-                tipo: tipo ? parseInt(tipo) : 0
+                tipo: tipo ? parseInt(tipo) : 0,
+                producible: producible === '1' || producible === 'true'
             });
             res.json(result);
         } catch (error) {

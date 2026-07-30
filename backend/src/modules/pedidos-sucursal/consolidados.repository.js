@@ -200,6 +200,51 @@ const ConsolidadosRepository = {
         return result.recordset;
     },
 
+    async getRecetaIngredientes(idsSub) {
+        if (!idsSub || idsSub.length === 0) return [];
+        const params = idsSub.map((id, i) => ({ name: `idSub${i}`, value: id }));
+        const placeholders = idsSub.map((_, i) => `@idSub${i}`).join(',');
+        const sql = `
+            SELECT pr.ID_SUB_CATEGORIA_2, ppr.ID_PRODUCTO, ppr.ID_PRODUCTO_INTERMEDIO, ppr.CANTIDAD
+            FROM PLANTA_RECETA pr
+            INNER JOIN PLANTA_PRODUCTO_RECETA ppr ON ppr.ID_PLANTA_RECETA = pr.ID_PLANTA_RECETA AND ppr.ESTADO = 1
+            WHERE pr.ID_SUB_CATEGORIA_2 IN (${placeholders}) AND pr.ESTADO = 1
+        `;
+        const result = await query(sql, params, 'planta');
+        return result.recordset;
+    },
+
+    async getAlmacenesBySubcategorias(idsSub) {
+        if (!idsSub || idsSub.length === 0) return [];
+        const params = idsSub.map((id, i) => ({ name: `idSub${i}`, value: id }));
+        const placeholders = idsSub.map((_, i) => `@idSub${i}`).join(',');
+        const sql = `
+            SELECT DISTINCT pr.ID_SUB_CATEGORIA_2, pra.ID_PLANTA_ALMACEN
+            FROM PLANTA_RECETA pr
+            INNER JOIN PLANTA_RECETA_ALMACEN pra ON pra.ID_PLANTA_RECETA = pr.ID_PLANTA_RECETA AND pra.ESTADO = 1
+            WHERE pr.ID_SUB_CATEGORIA_2 IN (${placeholders}) AND pr.ESTADO = 1
+        `;
+        const result = await query(sql, params, 'planta');
+        return result.recordset;
+    },
+
+    async getStockIngredientes(idsAlmacen, fecha) {
+        if (!idsAlmacen || idsAlmacen.length === 0) return [];
+        const params = idsAlmacen.map((id, i) => ({ name: `idAlm${i}`, value: id }));
+        params.push({ name: 'fecha', value: fecha });
+        const placeholders = idsAlmacen.map((_, i) => `@idAlm${i}`).join(',');
+        const sql = `
+            SELECT ID_PLANTA_ALMACEN, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO,
+                CAST(SUM(CANTIDAD - ISNULL(CANTIDAD_UTILIZADA, 0)) AS NUMERIC(18,2)) AS CANTIDAD
+            FROM PLANTA_ALMACEN_INVENTARIO
+            WHERE ID_PLANTA_ALMACEN IN (${placeholders})
+                AND ESTADO_INGRESO = 1 AND FECHA_VENCIMIENTO >= @fecha
+            GROUP BY ID_PLANTA_ALMACEN, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO
+        `;
+        const result = await query(sql, params, 'planta');
+        return result.recordset;
+    },
+
     async verifPedidoPrincipal(dbName, sufijo, idCabecera, idSub2, turno, transaction) {
         const sqlQuery = `
             select (case when epaa.ID_ENVIO_PEDIDO_AUX is null and ida.TURNO=@turno then 1 else 0 end) as pedido_principal
