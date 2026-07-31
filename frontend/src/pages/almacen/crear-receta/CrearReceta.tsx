@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { 
-  Autocomplete, 
-  TextField, 
-  ToggleButtonGroup, 
-  ToggleButton, 
-  IconButton, 
+import React, { useState, useEffect } from 'react';
+import {
+  Autocomplete,
+  TextField,
+  ToggleButtonGroup,
+  ToggleButton,
+  IconButton,
   Tooltip,
   useTheme,
   useMediaQuery,
@@ -13,58 +13,19 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  Button
+  DialogActions
 } from '@mui/material';
 import { showAlert } from '../../../config/alerts';
-
-// --- Mock Data ---
-const warehouses = ['CHEESECAKE', 'BIZCOCHOS', 'ESENCIAS', 'FRUTAS'];
-
-const initialMainProducts = [
-  { id: 1119, name: 'BIZCOCHO DE ALMENDRA - RI', warehouse: 'BIZCOCHOS' },
-  { id: 74, name: 'BIZCOCHO DE CHOCOLATE-RI', warehouse: 'BIZCOCHOS' },
-  { id: 2002, name: 'CHEESECAKE FRUTOS ROJOS', warehouse: 'CHEESECAKE' },
-];
-
-const masterProductList = [
-  { id: 5002, name: 'TORTA RED VELVET FAMILIAR' },
-  { id: 5003, name: 'CHEESECAKE DE OREO XL' },
-  { id: 5004, name: 'MUFFIN DE ARANDANOS' },
-  { id: 5005, name: 'PAN DE BONO ESPECIAL' },
-];
-
-const mockSavedRecipes: Record<number, any[]> = {
-  1119: [ // BIZCOCHO DE ALMENDRA
-    { id: 1, name: 'HARINA', unit: 'Gramo', type: 'insumo', icon: 'bakery_dining', qty: 3250, tempId: 1 },
-    { id: 2, name: 'AZUCAR', unit: 'Gramo', type: 'insumo', icon: 'egg', qty: 800, tempId: 2 },
-    { id: 3, name: 'HUEVO', unit: 'Unidad', type: 'insumo', icon: 'egg', qty: 80, tempId: 3 },
-  ],
-  74: [ // BIZCOCHO DE CHOCOLATE
-    { id: 2, name: 'AZUCAR', unit: 'Gramo', type: 'insumo', icon: 'egg', qty: 2300, tempId: 4 },
-    { id: 1, name: 'HARINA', unit: 'Gramo', type: 'insumo', icon: 'bakery_dining', qty: 2300, tempId: 5 },
-  ]
-};
-
-const availableIngredients = [
-  // Raw Materials (Insumos)
-  { id: 1, name: 'HARINA', unit: 'Gramo', type: 'insumo', icon: 'bakery_dining' },
-  { id: 2, name: 'AZUCAR', unit: 'Gramo', type: 'insumo', icon: 'egg' },
-  { id: 3, name: 'HUEVO', unit: 'Unidad', type: 'insumo', icon: 'egg' },
-  { id: 4, name: 'ACEITE', unit: 'Mililitro', type: 'insumo', icon: 'water_drop' },
-  
-  // Intermediate Products
-  { id: 101, name: 'REMOJO TRES LECHES-RI', unit: 'Unidad', type: 'intermedio', icon: 'water_drop' },
-  { id: 102, name: 'LECHE CONDENSADA RI', unit: 'Gramo', type: 'intermedio', icon: 'opacity' },
-  { id: 103, name: 'MASA BASE BIZCOCHO', unit: 'kg', type: 'intermedio', icon: 'bakery_dining' },
-];
+import { Button } from '../../../components/common/Button';
+import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { useNewRecetaAlmacenesServices } from './services/useCrearReceta';
 
 const StepBadge: React.FC<{ num: string; label: string }> = ({ num, label }) => (
   <div className="flex items-center gap-3 mb-4">
     <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-black text-xs shadow-lg shadow-primary/20">
       {num}
     </div>
-    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">{label}</span>
+    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant">{label}</span>
   </div>
 );
 
@@ -72,11 +33,25 @@ const CrearReceta: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  // Header State
-  const [warehouse, setWarehouse] = useState<string | null>(null);
+  const {
+    loadApiGetAlmacenesUsuario,
+    loadApiGetProductosCategoria2,
+    loadApiGetProductosForReceta,
+    loadApiGetRecetas,
+    loadApiGetProductosIntermediosActivos,
+    loadApiSaveReceta
+  } = useNewRecetaAlmacenesServices();
+
+  // API Data States
+  const [almacenes, setAlmacenes] = useState<any[]>([]);
+  const [productsCategoria2, setProductsCategoria2] = useState<any[]>([]);
+  const [insumosList, setInsumosList] = useState<any[]>([]);
+  const [intermediosList, setIntermediosList] = useState<any[]>([]);
+
+  // Selection States
+  const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
   const [targetProduct, setTargetProduct] = useState<any>(null);
-  const [availableMainProducts, setAvailableMainProducts] = useState(initialMainProducts);
-  
+
   // Linker Modal State
   const [isLinkingModalOpen, setIsLinkingModalOpen] = useState(false);
   const [selectedGlobalProduct, setSelectedGlobalProduct] = useState<any>(null);
@@ -88,40 +63,128 @@ const CrearReceta: React.FC = () => {
 
   // Recipe State
   const [recipeItems, setRecipeItems] = useState<any[]>([]);
+  const [initialIngredientKeys, setInitialIngredientKeys] = useState<string[]>([]);
+  const [hasExistingRecipe, setHasExistingRecipe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
-  const hasExistingRecipe = targetProduct && !!mockSavedRecipes[targetProduct.id];
+  // Load Initial Lists
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setIsLoading(true);
 
-  React.useEffect(() => {
-    if (targetProduct && mockSavedRecipes[targetProduct.id]) {
-      setRecipeItems(mockSavedRecipes[targetProduct.id]);
+      const resAlmacenes = await loadApiGetAlmacenesUsuario();
+      if (resAlmacenes && resAlmacenes.success) {
+        setAlmacenes(resAlmacenes.data || []);
+      }
+
+      const resCat2 = await loadApiGetProductosCategoria2();
+      if (resCat2 && resCat2.success) {
+        setProductsCategoria2(resCat2.data || []);
+      }
+
+      const resInsumos = await loadApiGetProductosForReceta(1);
+      if (resInsumos && resInsumos.success) {
+        setInsumosList(
+          (resInsumos.data || []).map((i: any) => ({
+            id: i.ID_PRODUCTO,
+            name: i.NOMBRE,
+            unit: i.UNIDAD_MEDIDA,
+            type: 'insumo',
+            id_unidad_medida: i.ID_UNIDAD_MEDIDA,
+            icon: 'bakery_dining'
+          }))
+        );
+      }
+
+      const resIntermedios = await loadApiGetProductosIntermediosActivos();
+      if (resIntermedios && resIntermedios.success) {
+        setIntermediosList(
+          (resIntermedios.data || []).map((i: any) => ({
+            id: i.ID_PRODUCTO_INTERMEDIO,
+            name: i.NOMBRE,
+            unit: i.UNIDAD_MEDIDA || 'Unidad',
+            type: 'intermedio',
+            id_unidad_medida: i.ID_UNIDAD_MEDIDA || 1,
+            icon: 'water_drop'
+          }))
+        );
+      }
+
+      setIsLoading(false);
+    };
+    loadInitialData();
+  }, []);
+
+  // Fetch Recipe when Target Product changes
+  useEffect(() => {
+    if (targetProduct) {
+      const fetchRecipe = async () => {
+        setIsLoading(true);
+        const res = await loadApiGetRecetas(targetProduct.ID_SUB_CATEGORIA_2);
+        if (res && res.success && res.data && res.data.length > 0) {
+          const mapped = res.data.map((item: any) => ({
+            id: item.ID_PRODUCTO || item.ID_PRODUCTO_INTERMEDIO,
+            name: item.PRODUCTO || item.PRODUCTO_INTERMEDIO,
+            unit: item.UNIDAD_MEDIDA || 'U',
+            type: item.ID_PRODUCTO ? 'insumo' : 'intermedio',
+            icon: item.ID_PRODUCTO ? 'bakery_dining' : 'water_drop',
+            qty: item.CANTIDAD,
+            tempId: item.ID_PLANTA_PRODUCTO_RECETA || Math.random(),
+            id_unidad_medida: item.ID_UNIDAD_MEDIDA || 1,
+            id_producto: item.ID_PRODUCTO,
+            id_producto_intermedio: item.ID_PRODUCTO_INTERMEDIO
+          }));
+          setRecipeItems(mapped);
+          setHasExistingRecipe(true);
+
+          const keys = res.data.map((item: any) => `${item.ID_PRODUCTO || 0}-${item.ID_PRODUCTO_INTERMEDIO || 0}`);
+          setInitialIngredientKeys(keys);
+        } else {
+          setRecipeItems([]);
+          setHasExistingRecipe(false);
+          setInitialIngredientKeys([]);
+        }
+        setIsLoading(false);
+      };
+      fetchRecipe();
     } else {
       setRecipeItems([]);
+      setHasExistingRecipe(false);
+      setInitialIngredientKeys([]);
     }
   }, [targetProduct]);
 
-  const filteredIngredients = availableIngredients.filter(i => i.type === ingType);
+  const filteredIngredients = ingType === 'insumo' ? insumosList : intermediosList;
 
   const handleAddItem = () => {
     if (!selectedIngredient || !quantity) return;
 
-    const exists = recipeItems.find(item => item.id === selectedIngredient.id && item.type === selectedIngredient.type);
+    const exists = recipeItems.find(item =>
+      (selectedIngredient.type === 'insumo' && item.id_producto === selectedIngredient.id) ||
+      (selectedIngredient.type === 'intermedio' && item.id_producto_intermedio === selectedIngredient.id)
+    );
     if (exists) {
-      setSnackbar({ open: true, message: 'Este ingrediente ya está en la receta', severity: 'error' });
+      showAlert.error('Duplicado', 'El producto ya existe en la tabla');
       return;
     }
 
     const newItem = {
-      ...selectedIngredient,
-      qty: quantity,
-      tempId: Date.now()
+      id: selectedIngredient.id,
+      name: selectedIngredient.name,
+      unit: selectedIngredient.unit || 'U',
+      type: selectedIngredient.type,
+      icon: selectedIngredient.icon || (selectedIngredient.type === 'insumo' ? 'bakery_dining' : 'water_drop'),
+      qty: Number(quantity),
+      tempId: Date.now(),
+      id_unidad_medida: selectedIngredient.id_unidad_medida || 1,
+      id_producto: selectedIngredient.type === 'insumo' ? selectedIngredient.id : 0,
+      id_producto_intermedio: selectedIngredient.type === 'intermedio' ? selectedIngredient.id : 0
     };
 
     setRecipeItems([newItem, ...recipeItems]);
     setSelectedIngredient(null);
     setQuantity('');
-    
-    // Auto-focus back to ingredient search would be ideal, but for now simple clear
   };
 
   const handleRemoveItem = (tempId: number) => {
@@ -129,31 +192,60 @@ const CrearReceta: React.FC = () => {
   };
 
   const handleLinkProduct = () => {
-    if (!selectedGlobalProduct || !warehouse) return;
-
-    const newLinkedProduct = {
-      ...selectedGlobalProduct,
-      warehouse: warehouse
-    };
-
-    setAvailableMainProducts([...availableMainProducts, newLinkedProduct]);
-    setTargetProduct(newLinkedProduct);
+    if (!selectedGlobalProduct) return;
+    setTargetProduct(selectedGlobalProduct);
     setIsLinkingModalOpen(false);
     setSelectedGlobalProduct(null);
-    setSnackbar({ open: true, message: 'Producto vinculado correctamente', severity: 'success' });
+    setSnackbar({ open: true, message: 'Producto seleccionado correctamente', severity: 'success' });
   };
 
-  const handleSaveRecipe = () => {
-    if (!targetProduct || recipeItems.length === 0) {
-      setSnackbar({ open: true, message: 'Complete los datos y agregue al menos un ingrediente', severity: 'error' });
+  const handleSaveRecipe = async () => {
+    if (!targetProduct || !selectedWarehouse || recipeItems.length === 0) {
+      showAlert.error('Error', 'Complete los datos y agregue al menos un ingrediente');
       return;
     }
-    showAlert.success('¡Éxito!', 'Receta registrada correctamente');
-    handleReset();
+
+    setIsLoading(true);
+
+    const activeProducts = recipeItems.map(item => ({
+      id_producto: item.id_producto || 0,
+      id_producto_intermedio: item.id_producto_intermedio || 0,
+      cantidad: Number(item.qty),
+      id_unidad_medida: item.id_unidad_medida || 1,
+      estado: 1
+    }));
+
+    // Find deleted ones
+    const deletedProducts = initialIngredientKeys
+      .filter(key => !recipeItems.some(item => `${item.id_producto || 0}-${item.id_producto_intermedio || 0}` === key))
+      .map(key => {
+        const [id_producto, id_producto_intermedio] = key.split('-').map(Number);
+        return {
+          id_producto,
+          id_producto_intermedio,
+          cantidad: 0,
+          id_unidad_medida: 1,
+          estado: 0
+        };
+      });
+
+    const payload = {
+      nombre: targetProduct.PRODUCTO || targetProduct.name || "",
+      id_sub_categoria_2: targetProduct.ID_SUB_CATEGORIA_2,
+      id_planta_almacen: selectedWarehouse.ID_PLANTA_ALMACEN,
+      productos: [...activeProducts, ...deletedProducts]
+    };
+
+    const res = await loadApiSaveReceta(payload);
+    setIsLoading(false);
+
+    if (res && res.success) {
+      showAlert.success('¡Éxito!', 'Receta guardada correctamente');
+      handleReset();
+    }
   };
 
   const handleReset = () => {
-    setWarehouse(null);
     setTargetProduct(null);
     setRecipeItems([]);
     setIngType('insumo');
@@ -161,62 +253,117 @@ const CrearReceta: React.FC = () => {
     setQuantity('');
   };
 
+  const selectSx = {
+    '& .MuiOutlinedInput-root': {
+      borderRadius: '15px',
+      backgroundColor: 'var(--surface-variant)',
+      color: 'var(--on-surface)',
+      padding: '3px 8px',
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'var(--outline-variant)',
+      },
+      '&:hover .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'var(--outline)',
+      },
+      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'var(--primary)',
+      },
+      '& .MuiSvgIcon-root': {
+        color: 'var(--on-surface-variant)',
+      }
+    }
+  };
+
+  const inputSx = {
+    '& .MuiOutlinedInput-root': {
+      borderRadius: '15px',
+      backgroundColor: 'var(--input-bg)',
+      color: 'var(--on-surface)',
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'var(--outline-variant)',
+      },
+      '&:hover .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'var(--outline)',
+      },
+      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'var(--primary)',
+      }
+    },
+    '& .MuiInputBase-input': {
+      fontSize: '11px',
+      py: '12px !important'
+    }
+  };
+
   return (
-    <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-20 px-4 md:px-0">
-      
+    <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-2 px-4 md:px-0 text-on-surface">
+      <LoadingOverlay show={isLoading} message="Procesando..." />
+
       {/* Header Section */}
-      <div className="mb-10 pt-4">
-        <p className="text-3xl md:text-4xl font-black text-zinc-900 tracking-tighter uppercase leading-none">Configuración de Receta</p>
-        <p className="text-[10px] md:text-xs text-zinc-400 font-bold uppercase tracking-[0.2em] mt-2">Defina los componentes y cantidades exactas para la producción central.</p>
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-1 pb-1">
+        <div>
+          <h1 className="text-2xl font-bold text-on-background uppercase font-headline">
+            Configuración de Receta
+          </h1>
+          <p className="text-[10px] text-on-surface-variant font-medium mt-1 font-body">
+            Defina los componentes y cantidades exactas para la producción central.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
+
         {/* Left Column: Configuration */}
         <div className="lg:col-span-8 space-y-10">
-          
+
           {/* STEP 01: Producto Objetivo */}
-          <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-zinc-100 shadow-sm">
+          <div className="bg-surface dark:bg-zinc-900 p-3 md:p-4 rounded-3xl border border-outline-variant dark:border-zinc-800 shadow-sm">
             <StepBadge num="01" label="Producto Objetivo" />
-            <div className="grid grid-cols-1 gap-8 mt-8">
+            <div className="grid grid-cols-1 gap-1 mt-2">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Almacén Propietario</label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Almacén Propietario</label>
                 <Autocomplete
-                  options={warehouses}
-                  value={warehouse}
-                  onChange={(_, v) => { setWarehouse(v); setTargetProduct(null); }}
-                  renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Seleccionar almacén..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px', bgcolor: 'zinc.50/30' } }} />}
+                  options={almacenes}
+                  getOptionLabel={(o: any) => o.DESCRICION || ''}
+                  value={selectedWarehouse}
+                  onChange={(_, v) => { setSelectedWarehouse(v); setTargetProduct(null); }}
+                  isOptionEqualToValue={(option, value) => option.ID_PLANTA_ALMACEN === value?.ID_PLANTA_ALMACEN}
+                  sx={selectSx}
+                  renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Seleccionar almacén..." />}
                 />
               </div>
-              <div className={`space-y-2 transition-all ${!warehouse ? 'opacity-30 pointer-events-none' : ''} flex-1`}>
+              <div className={`space-y-2 transition-all ${!selectedWarehouse ? 'opacity-30 pointer-events-none' : ''} flex-1`}>
                 <div className="flex justify-between items-center ml-1">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Producto a Definir</label>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Producto a Definir</label>
                   {targetProduct && (
-                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md animate-in fade-in zoom-in duration-300 ${hasExistingRecipe ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md animate-in fade-in zoom-in duration-300 ${hasExistingRecipe ? 'bg-amber-500/20 text-amber-600 dark:text-amber-450' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-450'}`}>
                       {hasExistingRecipe ? '📝 Receta Existente' : '✨ Nueva Receta'}
                     </span>
                   )}
                 </div>
                 <div className="flex gap-2">
                   <Autocomplete
-                    options={availableMainProducts.filter(p => p.warehouse === warehouse)}
-                    getOptionLabel={(o) => o.name}
+                    options={productsCategoria2}
+                    getOptionLabel={(o: any) => o.PRODUCTO || ''}
                     value={targetProduct}
                     fullWidth
                     onChange={(_, v) => setTargetProduct(v)}
-                    renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px', bgcolor: 'zinc.50/30' } }} />}
+                    isOptionEqualToValue={(option, value) => option.ID_SUB_CATEGORIA_2 === value?.ID_SUB_CATEGORIA_2}
+                    sx={selectSx}
+                    renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto..." />}
                   />
                   <Tooltip title="Vincular nuevo producto a este almacén">
-                    <button 
+                    <button
+                      type="button"
                       onClick={() => setIsLinkingModalOpen(true)}
-                      className="w-10 h-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-zinc-200"
+                      className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner hover:bg-primary/20 transition-all cursor-pointer shrink-0"
                     >
-                      <span className="material-symbols-outlined text-xl">link</span>
+                      <span className="material-symbols-outlined text-2xl font-bold">link</span>
                     </button>
                   </Tooltip>
                 </div>
-                {!targetProduct && warehouse && (
-                  <p className="text-[8px] text-zinc-400 font-black uppercase tracking-tighter mt-1 ml-1 animate-pulse">
+                {!targetProduct && selectedWarehouse && (
+                  <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-tighter mt-1 ml-1 animate-pulse">
                     ¿No encuentras el producto? Haz clic en el icono de enlace para vincularlo.
                   </p>
                 )}
@@ -225,87 +372,110 @@ const CrearReceta: React.FC = () => {
           </div>
 
           {/* STEP 02: Quick Adder */}
-          <div className={`bg-white p-6 md:p-10 rounded-[2.5rem] border border-zinc-100 shadow-sm transition-all ${!targetProduct ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}>
+          <div className={`bg-surface dark:bg-zinc-900 p-3 md:p-4 rounded-3xl border border-outline-variant dark:border-zinc-800 shadow-sm transition-all ${!targetProduct ? 'opacity-30 blur-[2px] pointer-events-none' : ''}`}>
             <StepBadge num="02" label="Agregar Componentes" />
-            
-            <div className="space-y-8 mt-6">
+
+            <div className="space-y-4 mt-4">
               {/* Type Switcher */}
-              <div className="flex flex-col sm:flex-row gap-6 items-center border-b border-zinc-50 pb-6">
+              <div className="flex flex-col sm:flex-row gap-6 items-center border-b border-outline-variant pb-6">
                 <ToggleButtonGroup
                   value={ingType}
                   exclusive
-                  onChange={(_, v) => { if(v) { setIngType(v); setSelectedIngredient(null); } }}
+                  onChange={(_, v) => { if (v) { setIngType(v); setSelectedIngredient(null); } }}
                   size="small"
-                  sx={{ '& .MuiToggleButton-root': { borderRadius: '12px', px: 3, border: '1px solid #f4f4f5', textTransform: 'none', fontWeight: 900, fontSize: '10px', letterSpacing: '0.1em' } }}
+                  sx={{
+                    '& .MuiToggleButton-root': {
+                      borderRadius: '12px',
+                      px: 3,
+                      border: '1px solid var(--outline-variant)',
+                      textTransform: 'none',
+                      fontWeight: 900,
+                      fontSize: '10px',
+                      letterSpacing: '0.1em',
+                      color: 'var(--on-surface-variant)',
+                      '&.Mui-selected': {
+                        backgroundColor: 'var(--primary)',
+                        color: 'white',
+                        '&:hover': {
+                          backgroundColor: 'var(--primary-container)'
+                        }
+                      }
+                    }
+                  }}
                 >
                   <ToggleButton value="insumo" className="uppercase">🍎 Materia Prima</ToggleButton>
                   <ToggleButton value="intermedio" className="uppercase">⚙️ P. Intermedio</ToggleButton>
                 </ToggleButtonGroup>
-                <p className="text-[9px] text-zinc-400 font-bold uppercase italic">* Puede mezclar ambos tipos en una misma receta</p>
+                <p className="text-[9px] text-on-surface-variant font-bold uppercase italic">* Puede mezclar ambos tipos en una misma receta</p>
               </div>
 
               {/* Adder Row */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                 <div className="md:col-span-6 space-y-2">
-                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Ingrediente</label>
+                  <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Ingrediente</label>
                   <Autocomplete
                     options={filteredIngredients}
-                    getOptionLabel={(o) => o.name}
+                    getOptionLabel={(o: any) => o.name || o.NOMBRE || ''}
                     value={selectedIngredient}
                     onChange={(_, v) => setSelectedIngredient(v)}
-                    onKeyDown={(e) => { if(e.key === 'Enter') handleAddItem(); }}
-                    renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }} />}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddItem(); }}
+                    isOptionEqualToValue={(option, value) => option.id === value?.id}
+                    sx={selectSx}
+                    renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar..." />}
                   />
                 </div>
                 <div className="md:col-span-3 space-y-2">
-                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Cantidad {selectedIngredient ? `(${selectedIngredient.unit})` : ''}</label>
-                  <TextField 
-                    fullWidth 
-                    type="number" 
-                    value={quantity} 
-                    onChange={(e) => setQuantity(e.target.value)} 
-                    onKeyDown={(e) => { if(e.key === 'Enter') handleAddItem(); }}
-                    size="small" 
+                  <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Cantidad {selectedIngredient ? `(${selectedIngredient.unit})` : ''}</label>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddItem(); }}
+                    size="small"
                     placeholder="0.00"
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }} 
+                    sx={inputSx}
                   />
                 </div>
                 <div className="md:col-span-3">
-                  <button 
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    fullWidth
                     onClick={handleAddItem}
                     disabled={!selectedIngredient || !quantity}
-                    className={`w-full h-10 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${(!selectedIngredient || !quantity) ? 'bg-zinc-100 text-zinc-300' : 'bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-95'}`}
+                    icon="add"
+                    className="!py-2"
                   >
-                    <span className="material-symbols-outlined text-lg">add</span>
                     Añadir
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
 
           {/* STEP 03: Recipe Table */}
-          <div className={`bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm overflow-hidden transition-all ${recipeItems.length === 0 ? 'opacity-30' : 'animate-in fade-in slide-in-from-bottom-4'}`}>
-            <div className="px-10 py-6 border-b border-zinc-50 bg-zinc-50/30 flex justify-between items-center">
+          <div className={`bg-surface dark:bg-zinc-900 rounded-3xl border border-outline-variant dark:border-zinc-800 shadow-sm overflow-hidden transition-all ${recipeItems.length === 0 ? 'opacity-30' : 'animate-in fade-in slide-in-from-bottom-4'}`}>
+            <div className="px-4 py-4 border-b border-outline-variant bg-zinc-50/50 dark:bg-zinc-950/20 flex justify-between items-center">
               <StepBadge num="03" label="Componentes Definidos" />
               {recipeItems.length > 0 && (
-                <button onClick={() => setRecipeItems([])} className="text-[9px] font-black text-rose-500 uppercase tracking-widest hover:underline decoration-2">Limpiar Todo</button>
+                <Button variant="ghost" size="sm" onClick={() => setRecipeItems([])} className="!text-rose-500 !px-4 !py-1">Limpiar Todo</Button>
               )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-zinc-50/50 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 border-b border-zinc-50">
-                    <td className="px-10 py-6">Componente</td>
-                    <td className="px-10 py-6 text-center">Tipo</td>
-                    <td className="px-10 py-6 text-center">Cantidad</td>
-                    <td className="px-10 py-6 text-right">Acción</td>
+                  <tr className="bg-zinc-50/50 dark:bg-zinc-950/20 text-[9px] font-black uppercase tracking-widest text-on-surface-variant border-b border-outline-variant">
+                    <td className="pl-6 pr-2 py-3">Componente</td>
+                    <td className="px-4 py-3 text-center">Tipo</td>
+                    <td className="px-4 py-3 text-center">Cantidad</td>
+                    <td className="pr-6 pl-2 py-3 text-right">Acción</td>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-50">
+                <tbody className="divide-y divide-outline-variant/35">
                   {recipeItems.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-10 py-16 text-center">
+                      <td colSpan={4} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center gap-4 opacity-30">
                           <span className="material-symbols-outlined text-4xl">receipt_long</span>
                           <p className="text-[10px] font-black uppercase tracking-[0.3em]">No hay ingredientes en la receta</p>
@@ -314,28 +484,35 @@ const CrearReceta: React.FC = () => {
                     </tr>
                   ) : (
                     recipeItems.map((item) => (
-                      <tr key={item.tempId} className="hover:bg-zinc-50/30 transition-all group">
-                        <td className="px-10 py-6">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-primary transition-colors">
-                              <span className="material-symbols-outlined text-xl">{item.icon}</span>
+                      <tr key={item.tempId} className="hover:bg-zinc-50/30 dark:hover:bg-zinc-800/10 transition-colors group">
+                        <td className="pl-6 pr-2 py-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-surface-variant flex items-center justify-center text-on-surface-variant group-hover:text-primary transition-colors">
+                              <span className="material-symbols-outlined text-lg">{item.icon}</span>
                             </div>
                             <div>
-                              <p className="font-black text-zinc-900 uppercase text-xs tracking-tight">{item.name}</p>
-                              <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">{item.unit}</p>
+                              <p className="font-black text-on-surface uppercase text-xs tracking-tight">{item.name}</p>
+                              <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest mt-0.5">{item.unit}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-10 py-6 text-center">
-                          <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${item.type === 'insumo' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                        <td className="px-4 py-2 text-center">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${item.type === 'insumo' ? 'bg-amber-500/20 text-amber-600 dark:text-amber-450' : 'bg-blue-500/20 text-blue-600 dark:text-blue-450'}`}>
                             {item.type === 'insumo' ? 'M. Prima' : 'Intermedio'}
                           </span>
                         </td>
-                        <td className="px-10 py-6 text-center font-black text-zinc-900">{item.qty}</td>
-                        <td className="px-10 py-6 text-right">
-                          <IconButton onClick={() => handleRemoveItem(item.tempId)} className="text-zinc-200 hover:text-rose-500 p-2">
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </IconButton>
+                        <td className="px-4 py-2 text-center font-black text-on-surface text-xs">{item.qty}</td>
+                        <td className="pr-6 pl-2 py-2 text-right">
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(item.tempId)}
+                              className="w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-450 shadow-inner hover:bg-rose-500/20 transition-all cursor-pointer"
+                              title="Eliminar"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -349,51 +526,55 @@ const CrearReceta: React.FC = () => {
         {/* Right Column: Summary & Actions */}
         <div className="lg:col-span-4">
           <div className="sticky top-6 space-y-6">
-            <div className="bg-indigo-50/50 rounded-[3rem] p-8 md:p-10 text-zinc-900 shadow-sm border border-indigo-100/50 overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-              
+            <div className="bg-primary/5 dark:bg-zinc-900 rounded-3xl p-2 md:p-4 text-on-surface shadow-sm border border-outline-variant overflow-hidden relative">
               <StepBadge num="✓" label="Resumen de Receta" />
-              
-              <div className="space-y-8 mt-8">
-                <div className="p-5 bg-white rounded-2xl border border-indigo-100 shadow-sm">
-                  <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Total Componentes</p>
-                  <p className="text-3xl font-black text-zinc-900">{recipeItems.length} <span className="text-xs text-zinc-300 uppercase">ítems</span></p>
+
+              <div className="space-y-3 mt-3">
+                <div className="p-4 bg-surface dark:bg-zinc-950/40 rounded-2xl border border-outline-variant shadow-sm">
+                  <p className="text-[9px] font-black uppercase text-on-surface-variant tracking-widest mb-1">Total Componentes</p>
+                  <p className="text-2xl font-black text-on-surface">{recipeItems.length} <span className="text-[10px] text-on-surface-variant uppercase font-normal">ítems</span></p>
                 </div>
 
-                <div className="space-y-4">
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest border-b border-indigo-100/50 pb-4">
-                     <span className="text-zinc-400">Materias Primas</span>
-                     <span className="text-zinc-900">{recipeItems.filter(i => i.type === 'insumo').length}</span>
-                   </div>
-                   <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest border-b border-indigo-100/50 pb-4">
-                     <span className="text-zinc-400">Prod. Intermedios</span>
-                     <span className="text-zinc-900">{recipeItems.filter(i => i.type === 'intermedio').length}</span>
-                   </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest border-b border-outline-variant pb-2.5">
+                    <span className="text-on-surface-variant">Materias Primas</span>
+                    <span className="text-on-surface">{recipeItems.filter(i => i.type === 'insumo').length}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest border-b border-outline-variant pb-2.5">
+                    <span className="text-on-surface-variant">Prod. Intermedios</span>
+                    <span className="text-on-surface">{recipeItems.filter(i => i.type === 'intermedio').length}</span>
+                  </div>
                 </div>
 
-                <div className="pt-6">
-                   <button 
-                     onClick={handleSaveRecipe}
-                     className={`w-full h-16 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_20px_50px_rgba(var(--primary-rgb),0.3)] hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3 ${hasExistingRecipe ? 'bg-amber-500 text-white' : 'bg-primary text-white'}`}
-                   >
-                     <span className="material-symbols-outlined">{hasExistingRecipe ? 'history_edu' : 'auto_fix_high'}</span>
-                     {hasExistingRecipe ? 'Actualizar Receta' : 'Guardar Receta'}
-                   </button>
-                   <button 
-                     onClick={handleReset}
-                     className="w-full h-12 text-zinc-400 hover:text-zinc-600 font-black uppercase text-[10px] tracking-[0.2em] transition-all mt-4"
-                   >
-                     Cancelar Edición
-                   </button>
+                <div className="pt-4">
+                  <Button
+                    variant={hasExistingRecipe ? "secondary" : "primary"}
+                    size="sm"
+                    fullWidth
+                    onClick={handleSaveRecipe}
+                    icon={hasExistingRecipe ? "history_edu" : "auto_fix_high"}
+                    className="!h-12 shadow-lg shadow-primary/20"
+                  >
+                    {hasExistingRecipe ? 'Actualizar Receta' : 'Guardar Receta'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    fullWidth
+                    onClick={handleReset}
+                    className="mt-3 !text-on-surface-variant"
+                  >
+                    Cancelar Edición
+                  </Button>
                 </div>
               </div>
             </div>
 
             {/* Hint Box */}
-            <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100 flex gap-4">
-              <span className="material-symbols-outlined text-amber-500">info</span>
-              <p className="text-[10px] text-amber-700 font-bold leading-relaxed uppercase">
-                Consejo: Puede presionar <span className="bg-amber-200/50 px-1.5 py-0.5 rounded text-amber-900">Enter</span> después de escribir la cantidad para añadir rápidamente el ingrediente a la lista.
+            <div className="bg-amber-500/10 p-6 rounded-3xl border border-amber-500/20 flex gap-4">
+              <span className="material-symbols-outlined text-amber-600 dark:text-amber-500">info</span>
+              <p className="text-[9px] text-amber-700 dark:text-amber-450 font-bold leading-relaxed uppercase">
+                Consejo: Puede presionar <span className="bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-900 dark:text-amber-200">Enter</span> después de escribir la cantidad para añadir rápidamente el ingrediente a la lista.
               </p>
             </div>
           </div>
@@ -401,51 +582,55 @@ const CrearReceta: React.FC = () => {
       </div>
 
       {/* Linking Modal */}
-      <Dialog 
-        open={isLinkingModalOpen} 
+      <Dialog
+        open={isLinkingModalOpen}
         onClose={() => setIsLinkingModalOpen(false)}
-        slotProps={{ paper: { sx: { borderRadius: '2rem', p: 2 } } }}
+        slotProps={{ paper: { sx: { borderRadius: '2rem', p: 2, bgcolor: 'var(--background)', color: 'var(--on-background)' } } }}
       >
-        <DialogTitle className="font-black text-zinc-900 uppercase tracking-tight text-xl">Vincular Producto</DialogTitle>
-        <DialogContent className="space-y-6 pt-4">
-          <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider leading-relaxed">
-            Seleccione un producto del catálogo maestro para habilitarlo en el almacén <span className="text-primary font-black">"{warehouse}"</span>.
+        <DialogTitle className="font-black text-on-background uppercase tracking-tight text-lg">Vincular Producto</DialogTitle>
+        <DialogContent className="space-y-4 pt-2">
+          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider leading-relaxed">
+            Seleccione un producto del catálogo maestro para habilitarlo en el almacén <span className="text-primary font-black">"{selectedWarehouse?.DESCRICION || ''}"</span>.
           </p>
-          <div className="space-y-4">
+          <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Producto Maestro</label>
+              <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Producto Maestro</label>
               <Autocomplete
-                options={masterProductList}
-                getOptionLabel={(o) => o.name}
+                options={productsCategoria2}
+                getOptionLabel={(o: any) => o.PRODUCTO || ''}
                 value={selectedGlobalProduct}
                 onChange={(_, v) => setSelectedGlobalProduct(v)}
-                renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto global..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }} />}
+                isOptionEqualToValue={(option, value) => option.ID_SUB_CATEGORIA_2 === value?.ID_SUB_CATEGORIA_2}
+                sx={selectSx}
+                renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto global..." />}
               />
             </div>
           </div>
         </DialogContent>
-        <DialogActions className="p-6 pt-0">
-          <Button onClick={() => setIsLinkingModalOpen(false)} sx={{ color: 'zinc.400', fontWeight: 900, fontSize: '10px' }}>Cancelar</Button>
-          <button 
+        <DialogActions className="p-6 pt-0 gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setIsLinkingModalOpen(false)} className="!text-on-surface-variant">Cancelar</Button>
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleLinkProduct}
             disabled={!selectedGlobalProduct}
-            className={`h-12 px-8 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${!selectedGlobalProduct ? 'bg-zinc-100 text-zinc-300' : 'bg-primary text-white shadow-lg shadow-primary/20 hover:scale-105 active:scale-95'}`}
+            className="!px-6"
           >
             Vincular y Continuar
-          </button>
+          </Button>
         </DialogActions>
       </Dialog>
 
       {/* Global Alerts */}
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={4000} 
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
-          severity={snackbar.severity} 
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
           variant="filled"
           sx={{ width: '100%', borderRadius: '20px', fontWeight: 900, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.1em' }}
         >
