@@ -11,7 +11,7 @@ function getDbName(codigo) {
 }
 
 const ConsolidadosService = {
-    async listarPedidosConsolidados({ fecha_reporte, tipo_reporte, sucursal: id_sucursal, tipo, producible }) {
+    async listarPedidosConsolidados({ fecha_reporte, tipo_reporte, sucursal: id_sucursal, tipo, producible, filtrar_total, filtrar_restante }) {
         const [sucursales, inventarios, stocks, turnosAll] = await Promise.all([
             SucursalService.getSucursales(),
             InventarioService.getInventariosSubcategoria2(fecha_reporte, 'ALL'),
@@ -50,7 +50,7 @@ const ConsolidadosService = {
             }
         }
 
-        const arrayResponse = [];
+        let arrayResponse = [];
         const turnosPedido = {};
         const cabecera = ['Categoria', 'SubCategoria', 'Producto', 'Turno'];
         const sinFiltroSuc = id_sucursal == 0;
@@ -180,6 +180,11 @@ const ConsolidadosService = {
         for (const item of arrayResponse) {
             if (item.producible === undefined) item.producible = 0;
         }
+
+        arrayResponse = arrayResponse.filter(i =>
+            (!filtrar_total || i.Total > 0) &&
+            (!filtrar_restante || (i.Total - i.Total_enviado - i.producible - i.Stock) > 0)
+        );
 
         cabecera.push('Total', 'Vencimiento');
 
