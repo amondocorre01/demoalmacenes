@@ -38,6 +38,7 @@ import GuiaRegistroProducto from './pages/almacen/registro-producto/GuiaRegistro
 import RegistroGrupoProducto from './pages/almacen/registro-grupo-producto/RegistroGrupoProducto';
 import RegistroFacturasInsumos from './pages/almacen/registro-facturas-insumos/RegistroFacturasInsumos';
 import RegistroProduccion from './pages/almacen/registro-produccion/RegistroProduccion';
+import AccesibilidadAlmacenUsuarios from './pages/almacen/accesibilidad-almacen/AccesibilidadAlmacenUsuarios';
 
 import PedidosConsolidadosAlmacen from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
 import HelpCenter from './pages/help/HelpCenter';
@@ -68,6 +69,7 @@ const App: React.FC = () => {
           <Route path="/almacen/crear" element={<ListaAlmacenes />} />
           <Route path="/almacen/crear-receta" element={<CrearReceta />} />
           <Route path="/almacen/asignar-producto" element={<AsignarProducto />} />
+          <Route path="/almacen/accesibilidad-almacen" element={<AccesibilidadAlmacenUsuarios />} />
           <Route path="/almacen/recetas-intermedias" element={<RecetasIntermedias />} />
           <Route path="/almacen/lista-recetas" element={<ListaGeneralRecetas />} />
           <Route path="/almacen/productos-intermedios" element={<ProductosIntermedios />} />

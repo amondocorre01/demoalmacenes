@@ -29,6 +29,7 @@ const staticMenuItems: ApiMenuItem[] = [
   { id: 311, nombre: 'Crear almacén', ruta: '/almacen/crear', icono: 'add_home', orden: 1 },
   { id: 312, nombre: 'Crear receta almacén', ruta: '/almacen/crear-receta', icono: 'receipt_long', orden: 2 },
   { id: 313, nombre: 'Asignar Producto Almacén', ruta: '/almacen/asignar-producto', icono: 'assignment_ind', orden: 3 },
+  { id: 3135, nombre: 'Accesibilidad de Almacenes', ruta: '/almacen/accesibilidad-almacen', icono: 'lock_person', orden: 3.5 },
   { id: 314, nombre: 'Recetas Intermedias', ruta: '/almacen/recetas-intermedias', icono: 'cookie', orden: 4 },
   { id: 315, nombre: 'Lista General de Recetas', ruta: '/almacen/lista-recetas', icono: 'menu_book', orden: 5 },
   { id: 316, nombre: 'Productos intermedios', ruta: '/almacen/productos-intermedios', icono: 'inventory_2', orden: 6 },
