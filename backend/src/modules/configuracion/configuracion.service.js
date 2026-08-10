@@ -28,14 +28,14 @@ class ConfiguracionService {
 
     async listarProductosAlmacen(idAlmacen) {
         const productos = await Repo.getProductosAlmacen(idAlmacen);
-        const inventario = await Repo.getStockAlmacen(idAlmacen);
+        /*const inventario = await Repo.getStockAlmacen(idAlmacen);
         if (!productos || productos.length === 0 || !idAlmacen) {
             return { status: false, message: 'No existen productos en almacen.' };
         }
         productos.forEach(producto => {
             const idProducto = producto.ID_PRODUCTO || 0;
             producto.STOCK = inventario[idProducto] || 0;
-        });
+        });*/
         return { status: true, productos };
     }
 

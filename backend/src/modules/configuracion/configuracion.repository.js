@@ -27,20 +27,17 @@ class ConfiguracionRepository {
 
     async getProductosAlmacen(idAlmacen) {
         const sql = `
-            SELECT *,
-                (SELECT TOP(1) pum.UNIDAD_MEDIDA
-                 FROM PLANTA_PRODUCTO_DETALLE ppd, PLANTA_UNIDAD_MEDIDA pum
-                 WHERE ppd.ID_PRODUCTO = pp.ID_PRODUCTO
-                   AND pum.ID_UNIDAD_MEDIDA = ppd.ID_UNIDAD_MEDIDA_ADECUACION
-                   AND ppd.ESTADO = 1
-                 ORDER BY ppd.ID_PRODUCTO_DETALLE) AS UNIDAD_MEDIDA
-            FROM PLANTA_PRODUCTO pp
-            WHERE ID_PRODUCTO IN (
-                SELECT DISTINCT(ID_PRODUCTO)
-                FROM PLANTA_ALMACEN_INVENTARIO pai
-                WHERE ID_PLANTA_ALMACEN = @idAlmacen
-            )
-            ORDER BY NOMBRE
+            SELECT *FROM (
+					SELECT vpp.ID_PRODUCTO, 0 AS ID_PRODUCTO_INTERMEDIO,NOMBRE AS PRODUCTO,COALESCE(pap.ESTADO, 0) AS ESTADO
+						FROM VISTA_PLANTA_PRODUCTO vpp
+						LEFT JOIN PLANTA_ALMACEN_PRODUCTO pap ON pap.ID_PRODUCTO = vpp.ID_PRODUCTO AND pap.ID_PLANTA_ALMACEN = @idAlmacen
+						WHERE CODIGO = '1' AND vpp.ESTADO = '1'
+					UNION
+					SELECT 0 AS ID_PRODUCTO,vppi.ID_PRODUCTO_INTERMEDIO, NOMBRE AS PRODUCTO, COALESCE(pap.ESTADO, 0) AS ESTADO
+						FROM VISTA_PLANTA_PRODUCTO_INTERMEDIO_V2 vppi
+						LEFT JOIN PLANTA_ALMACEN_PRODUCTO pap ON pap.ID_PRODUCTO_INTERMEDIO = vppi.ID_PRODUCTO_INTERMEDIO AND pap.ID_PLANTA_ALMACEN = @idAlmacen
+						WHERE vppi.ESTADO = '1'
+				) AS tb1 ORDER BY tb1.PRODUCTO ,tb1.ESTADO ;
         `;
         const result = await query(sql, [{ name: 'idAlmacen', value: idAlmacen }]);
         return result.recordset || [];
