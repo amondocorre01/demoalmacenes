@@ -9,7 +9,7 @@ class PedidoAlmacenService {
     async listAlmacenesSolicitantes(idUsuario) {
         const almacenes = await Repo.listAlmacenesSolicitantes(idUsuario);
       
-        return { status: true, almacenes };
+        return { success: true, almacenes };
     }
 
     async listProductos(idAlmacen,idAlmacenSolicitante, tipo) {
@@ -34,16 +34,16 @@ class PedidoAlmacenService {
                 resultado.push(...grupo.filter(p => p.STOCK > 0));
             }
         }
-        return { status: true, productos: resultado };
+        return { success: true, productos: resultado };
     }
 
     async crearSolicitud(idUsuario, idAlmacenSolicitante, idAlmacenDestino, fechaEntrega, productos) {
         if (idAlmacenSolicitante === idAlmacenDestino) {
-            return { status: false, message: 'El almacén solicitante y destino no pueden ser el mismo.' };
+            return { success: false, message: 'El almacén solicitante y destino no pueden ser el mismo.' };
         }
 
         if (!productos || productos.length === 0) {
-            return { status: false, message: 'Debe agregar al menos un producto.' };
+            return { success: false, message: 'Debe agregar al menos un producto.' };
         }
 
         const insuficientes = [];
@@ -67,7 +67,7 @@ class PedidoAlmacenService {
         }
         if (insuficientes.length > 0) {
             return {
-                status: false,
+                success: false,
                 message: 'Stock insuficiente en el almacén destino para los siguientes productos.',
                 productos: insuficientes
             };
@@ -81,7 +81,7 @@ class PedidoAlmacenService {
 
             if (!idDocumento) {
                 await transaction.rollback();
-                return { status: false, message: 'Error al registrar la solicitud.' };
+                return { success: false, message: 'Error al registrar la solicitud.' };
             }
 
             await Repo.registrarRegistro(idUsuario, 1, idDocumento, transaction);
@@ -110,10 +110,10 @@ class PedidoAlmacenService {
                 referenciaModulo: 'pedidos-almacen',
                 usuarioOrigen: idUsuario
             });
-            return { status: true, message: 'Solicitud registrada correctamente.', id_documento: idDocumento };
+            return { success: true, message: 'Solicitud registrada correctamente.', id_documento: idDocumento };
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurrió un error al registrar la solicitud.' };
+            return { success: false, message: 'Ocurrió un error al registrar la solicitud.' };
         }
     }
 
@@ -126,15 +126,15 @@ class PedidoAlmacenService {
         );
 
         if (!documentos || documentos.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, solicitudes: documentos };
+        return { success: true, solicitudes: documentos };
     }
 
     async getSolicitud(idDocumento) {
         const documento = await Repo.getDocumentoById(idDocumento);
         if (!documento) {
-            return { status: false, message: 'No se encontró la solicitud.' };
+            return { success: false, message: 'No se encontró la solicitud.' };
         }
         const idAlmacenDestino = documento.ID_ALMACEN_DESTINO || 0;
         if (documento.ESTADO === 1) {
@@ -149,16 +149,16 @@ class PedidoAlmacenService {
             d.STOCK = stock;
           }
         }
-        return { status: true, solicitud: documento };
+        return { success: true, solicitud: documento };
     }
 
     async editarSolicitud(idUsuario, idDocumento, productos) {
         const documento = await Repo.getDocumentoById(idDocumento);
         if (!documento) {
-            return { status: false, message: 'No se encontró la solicitud.' };
+            return { success: false, message: 'No se encontró la solicitud.' };
         }
         if (documento.ESTADO !== 1) {
-            return { status: false, message: 'Solo se pueden editar solicitudes pendientes.' };
+            return { success: false, message: 'Solo se pueden editar solicitudes pendientes.' };
         }
         const idAlmacenDestino = documento.ID_ALMACEN_DESTINO || 0;
         const insuficientes = [];
@@ -182,7 +182,7 @@ class PedidoAlmacenService {
         }
         if (insuficientes.length > 0) {
             return {
-                status: false,
+                success: false,
                 message: 'Stock insuficiente en el almacén destino para los siguientes productos.',
                 productos: insuficientes
             };
@@ -220,20 +220,20 @@ class PedidoAlmacenService {
                 referenciaModulo: 'pedidos-almacen',
                 usuarioOrigen: idUsuario
             });
-            return { status: true, message: 'Solicitud actualizada correctamente.' };
+            return { success: true, message: 'Solicitud actualizada correctamente.' };
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurrió un error al editar la solicitud.' };
+            return { success: false, message: 'Ocurrió un error al editar la solicitud.' };
         }
     }
 
     async enviarSolicitud(idUsuario, idDocumento, detalles) {
         const documento = await Repo.getDocumentoById(idDocumento);
         if (!documento) {
-            return { status: false, message: 'No se encontró la solicitud.' };
+            return { success: false, message: 'No se encontró la solicitud.' };
         }
         if (documento.ESTADO !== 1) {
-            return { status: false, message: 'Solo se pueden enviar solicitudes pendientes.' };
+            return { success: false, message: 'Solo se pueden enviar solicitudes pendientes.' };
         }
 
         const idAlmacenDestino = documento.ID_ALMACEN_DESTINO;
@@ -264,7 +264,7 @@ class PedidoAlmacenService {
         }
         if (insuficientes.length > 0) {
             return {
-                status: false,
+                success: false,
                 message: 'Stock insuficiente en el almacén destino para completar el envío.',
                 productos: insuficientes
             };
@@ -352,21 +352,21 @@ class PedidoAlmacenService {
                 referenciaModulo: 'pedidos-almacen',
                 usuarioOrigen: idUsuario
             });
-            return { status: true, message: 'Solicitud enviada correctamente. El inventario fue transferido.' };
+            return { success: true, message: 'Solicitud enviada correctamente. El inventario fue transferido.' };
         } catch (error) {
             console.log(error)
             await transaction.rollback();
-            return { status: false, message: 'Ocurrió un error al enviar la solicitud.' };
+            return { success: false, message: 'Ocurrió un error al enviar la solicitud.' };
         }
     }
 
     async recibirSolicitud(idUsuario, idDocumento, detalles) {
         const documento = await Repo.getDocumentoById(idDocumento);
         if (!documento) {
-            return { status: false, message: 'No se encontró la solicitud.' };
+            return { success: false, message: 'No se encontró la solicitud.' };
         }
         if (documento.ESTADO !== 2) {
-            return { status: false, message: 'Solo se pueden recibir solicitudes en estado enviado.' };
+            return { success: false, message: 'Solo se pueden recibir solicitudes en estado enviado.' };
         }
 
         const transaction = await beginTransaction();
@@ -383,20 +383,20 @@ class PedidoAlmacenService {
             await Repo.registrarRegistro(idUsuario, 3, idDocumento, transaction);
 
             await transaction.commit();
-            return { status: true, message: 'Solicitud recibida correctamente.' };
+            return { success: true, message: 'Solicitud recibida correctamente.' };
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurrió un error al recibir la solicitud.' };
+            return { success: false, message: 'Ocurrió un error al recibir la solicitud.' };
         }
     }
 
     async cancelarSolicitud(idUsuario, idDocumento) {
         const documento = await Repo.getDocumentoById(idDocumento);
         if (!documento) {
-            return { status: false, message: 'No se encontró la solicitud.' };
+            return { success: false, message: 'No se encontró la solicitud.' };
         }
         if (documento.ESTADO === 2 || documento.ESTADO === 4) {
-            return { status: false, message: 'No se puede cancelar una solicitud ya entregada o cancelada.' };
+            return { success: false, message: 'No se puede cancelar una solicitud ya entregada o cancelada.' };
         }
 
         const transaction = await beginTransaction();
@@ -404,10 +404,10 @@ class PedidoAlmacenService {
             await Repo.updateDocumentoEstado(idDocumento, 4, transaction);
             await Repo.registrarRegistro(idUsuario, 4, idDocumento, transaction);
             await transaction.commit();
-            return { status: true, message: 'Solicitud cancelada correctamente.' };
+            return { success: true, message: 'Solicitud cancelada correctamente.' };
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurrió un error al cancelar la solicitud.' };
+            return { success: false, message: 'Ocurrió un error al cancelar la solicitud.' };
         }
     }
 }

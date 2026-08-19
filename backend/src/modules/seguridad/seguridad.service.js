@@ -5,9 +5,9 @@ class SeguridadService {
     async getAccesibilidadAlmacen() {
         const usuarios = await Repo.getAccesibilidadAlmacen();
         if (!usuarios || usuarios.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, usuarios };
+        return { success: true, usuarios };
     }
 
     async setAccesoAlmacen(data, idUsuarioSession) {
@@ -27,7 +27,7 @@ class SeguridadService {
             ? 'El acceso se ha quitado correctamente.'
             : 'El acceso se ha asignado correctamente.';
 
-        return { status: true, message: mensaje };
+        return { success: true, message: mensaje };
     }
 
 }

@@ -18,25 +18,25 @@ class ProduccionService {
     async getAreasByUsuario(idUsuario) {
         const areas = await Repo.getAreasByUsuario(idUsuario);
         if (!areas || areas.length === 0) {
-            return { status: false, message: 'No existen áreas.' };
+            return { success: false, message: 'No existen áreas.' };
         }
-        return { status: true, areas };
+        return { success: true, areas };
     }
 
     async listAlmacen() {
         const almacenes = await Repo.listAlmacen();
         if (!almacenes || almacenes.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, data: almacenes };
+        return { success: true, data: almacenes };
     }
 
     async listAlmacenUsuario(idUsuario) {
         const almacenes = await InventarioHelper.listAlmacenUsuario(idUsuario, 0);
         if (!almacenes || almacenes.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, almacenes };
+        return { success: true, almacenes };
     }
 
     async getRecetaByAlmacen(idAlmacen, tipo) {
@@ -92,9 +92,9 @@ class ProduccionService {
         }
 
         if (recetas.length === 0) {
-            return { status: false, message: 'No existen productos.' };
+            return { success: false, message: 'No existen productos.' };
         }
-        return { status: true, recetas };
+        return { success: true, recetas };
     }
 
     async getProductosProducidos(idAlmacen, fechaInicio, fechaFin) {
@@ -104,9 +104,9 @@ class ProduccionService {
 
         const productos = await Repo.getProductosProducidos(idAlmacen, fi, ff);
         if (!productos || productos.length === 0) {
-            return { status: false, message: 'No existen productos registrados.' };
+            return { success: false, message: 'No existen productos registrados.' };
         }
-        return { status: true, productos };
+        return { success: true, productos };
     }
 
     async validarDatosProduccion(data) {
@@ -264,7 +264,7 @@ class ProduccionService {
               });
             }
 
-            return { status: true, message: 'Se guardo correctamente la información.', lotes };
+            return { success: true, message: 'Se guardo correctamente la información.', lotes };
         } catch (error) {
             await transaction.rollback();
             throw error;

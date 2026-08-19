@@ -116,7 +116,7 @@ class VerifDeclaracionService {
             await this._verificarDescuadreInventario(idAlmacen, docId, idUsuario, fechaAct, fechaHoraUlt);
 
             await transaction.commit();
-            return { status: true, message: 'Se guardo correctamente la información.' };
+            return { success: true, message: 'Se guardo correctamente la información.' };
         } catch (error) {
             await transaction.rollback();
             throw error;

@@ -20,7 +20,7 @@ const guardarVerificacionDeclaracionAlmacen = tryCatch(async (req, res) => {
     const idUsuario = getUserId(req);
     const idAlmacen = parseInt(req.params.idAlmacen, 10);
     const result = await Service.guardarVerificacionDeclaracionAlmacen(idAlmacen, req.body, idUsuario);
-    res.json({ status: result.status, message: result.message });
+    res.json({ success: result.success, message: result.message });
 });
 
 const listarDeclaVerificadaAlmacen = tryCatch(async (req, res) => {

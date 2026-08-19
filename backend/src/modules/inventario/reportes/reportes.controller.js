@@ -32,7 +32,7 @@ const depreciarProducto = tryCatch(async (req, res) => {
     const idUsuario = getUserId(req);
     const idAlmacen = parseInt(req.params.idAlmacen, 10);
     const result = await Service.depreciarProducto(idAlmacen, req.body, idUsuario);
-    res.json({ success: result.status, message: result.message });
+    res.json({ success: result.success, message: result.message });
 });
 
 const listarProductosDepreciados = tryCatch(async (req, res) => {
@@ -43,7 +43,7 @@ const listarProductosDepreciados = tryCatch(async (req, res) => {
 });
 const listHistorialInventarioAlmacen = tryCatch(async (req, res) => {
     const result = await Service.listHistorialInventarioAlmacen(req.query);
-    if (result.status) {
+    if (result.success) {
         res.json({ success: true, datos: result.productos });
     } else {
         res.json({ success: false, message: result.message });

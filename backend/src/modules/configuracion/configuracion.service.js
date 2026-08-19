@@ -36,7 +36,7 @@ class ConfiguracionService {
             const idProducto = producto.ID_PRODUCTO || 0;
             producto.STOCK = inventario[idProducto] || 0;
         });*/
-        return { status: true, productos };
+        return { success: true, productos };
     }
 
     async asignarProductoAlmacen(idAlmacen, idProducto, idProductoIntermedio, estado = 0) {

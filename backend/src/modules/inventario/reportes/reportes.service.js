@@ -91,7 +91,7 @@ class ReportesService {
             }
 
             await transaction.commit();
-            return { status: true, message: 'Se registro correctamente la información.' };
+            return { success: true, message: 'Se registro correctamente la información.' };
         } catch (error) {
             await transaction.rollback();
             throw error;
@@ -120,10 +120,10 @@ class ReportesService {
             productos.forEach(inv => {
                 try { inv.DETALLE = inv.DETALLE ? JSON.parse(inv.DETALLE) : []; } catch { inv.DETALLE = []; }
             });
-            return { status: true, productos };
+            return { success: true, productos };
         }
 
-        return { status: false, message: 'No existen productos en inventario.' };
+        return { success: false, message: 'No existen productos en inventario.' };
     }
 }
 

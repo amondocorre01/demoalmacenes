@@ -6,9 +6,9 @@ class PedidosService {
     async listAlmacenUsuario(idUsuario) {
         const almacenes = await Repo.listAlmacenUsuario(idUsuario, 0);
         if (!almacenes || almacenes.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, almacenes };
+        return { success: true, almacenes };
     }
 
     async getProductosPlantaAlmacen(idUsuario, idArea, idPlantaAlmacen) {
@@ -19,7 +19,7 @@ class PedidosService {
             producto.STOCK = inventario[idProducto] || 0;
         }
         if (!productos || productos.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
         const agrupados = {};
         for (const p of productos) {
@@ -37,22 +37,22 @@ class PedidosService {
                 resultado.push(...grupo.filter(p => p.STOCK > 0));
             }
         }
-        return { status: true, productos: resultado };
+        return { success: true, productos: resultado };
     }
 
     async getInventarioPlanta(idArea, idDocumento) {
         const inv = await Repo.getInventarioPlantaData(idArea, idDocumento);
         if (!inv || Object.keys(inv).length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, inventario: inv };
+        return { success: true, inventario: inv };
     }
 
     async enviarSolicitudAlmacen(idUsuario, idPlantaAlmacen, idArea, fechaEntrega, productos) {
         const stockCheck = await Repo.verificarStockDisponible(idArea, productos, 0);
         if (stockCheck.length > 0) {
             return {
-                status: false,
+                success: false,
                 message: 'La cantidad de pedido de los siguientes productos supera el STOCK de inventario.',
                 data: stockCheck
             };
@@ -64,7 +64,7 @@ class PedidosService {
             return result;
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurrio un error.' };
+            return { success: false, message: 'Ocurrio un error.' };
         }
     }
 
@@ -72,7 +72,7 @@ class PedidosService {
         const stockCheck = await Repo.verificarStockDisponible(idArea, productos, idDocumento);
         if (stockCheck.length > 0) {
             return {
-                status: false,
+                success: false,
                 message: 'La cantidad de pedido de los siguientes productos supera el STOCK de inventario.',
                 data: stockCheck
             };
@@ -84,7 +84,7 @@ class PedidosService {
             return result;
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurrio un error.' };
+            return { success: false, message: 'Ocurrio un error.' };
         }
     }
 
@@ -97,17 +97,17 @@ class PedidosService {
         const idsAlmacen = almacenesArray.join(',');
         const pedidos = await Repo.listPedidosAlmacen(idPlantaAlmacen, idsAlmacen, fechaInicio, fechaFin);
         if (!pedidos || pedidos.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, pedidos };
+        return { success: true, pedidos };
     }
 
     async getPermisosReporte(idVentasAcceso, idUsuario) {
         const permisos = await Repo.getPermisosReporte(idVentasAcceso, idUsuario);
         if (!permisos || permisos.length === 0) {
-            return { status: false };
+            return { success: false };
         }
-        return { status: true, permisos };
+        return { success: true, permisos };
     }
 }
 

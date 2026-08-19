@@ -6,45 +6,45 @@ class DevolucionProductoService {
     async getAreasByUsuario(idUsuario) {
         const areas = await Repo.getAreasByUsuario(idUsuario);
         if (!areas || areas.length === 0) {
-            return { status: false, message: 'No existen áreas.' };
+            return { success: false, message: 'No existen áreas.' };
         }
-        return { status: true, areas };
+        return { success: true, areas };
     }
 
     async listAlmacenes() {
         const data = await Repo.listAlmacenes();
         if (!data || data.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, data };
+        return { success: true, data };
     }
 
     async listAlmacenActivos() {
         const data = await Repo.listAlmacenActivos();
         if (!data || data.length === 0) {
-            return { status: false, message: 'No existen datos.' };
+            return { success: false, message: 'No existen datos.' };
         }
-        return { status: true, data };
+        return { success: true, data };
     }
 
     async listarProductosStock(idPlantaAlmacen) {
         const productos = await Repo.listarProductosStock(idPlantaAlmacen);
         if (!productos || productos.length === 0) {
-            return { status: false, message: 'No existen productos registrados.' };
+            return { success: false, message: 'No existen productos registrados.' };
         }
-        return { status: true, productos };
+        return { success: true, productos };
     }
 
     // ─── validarDatosDevolucion (PHP lines 2275-2327) ───
     async _validarDatosDevolucion(idPlantaAlmacen, idArea, productos) {
         if (!idPlantaAlmacen || !Number.isFinite(idPlantaAlmacen)) {
-            return { status: false, message: "Campo 'id_planta_almacen' no valido." };
+            return { success: false, message: "Campo 'id_planta_almacen' no valido." };
         }
         if (!idArea || !Number.isFinite(idArea)) {
-            return { status: false, message: "Campo 'id_area' no valido." };
+            return { success: false, message: "Campo 'id_area' no valido." };
         }
         if (!productos || productos.length === 0) {
-            return { status: false, message: 'Se requiere productos.' };
+            return { success: false, message: 'Se requiere productos.' };
         }
         const stockErrors = [];
         for (const producto of productos) {
@@ -54,7 +54,7 @@ class DevolucionProductoService {
             const cantidad = parseFloat(producto.cantidad || 0);
             const fecha = producto.fecha;
             if (!fecha) {
-                return { status: false, message: `Se requiere fecha en el siguiente producto: ${nombreProd}.` };
+                return { success: false, message: `Se requiere fecha en el siguiente producto: ${nombreProd}.` };
             }
             let stock = 0;
             if (idProducto) {
@@ -65,9 +65,9 @@ class DevolucionProductoService {
             }
         }
         if (stockErrors.length > 0) {
-            return { status: false, message: 'No cuenta con suficiente stock en los siguientes productos.', productos: stockErrors };
+            return { success: false, message: 'No cuenta con suficiente stock en los siguientes productos.', productos: stockErrors };
         }
-        return { status: true };
+        return { success: true };
     }
 
     // ─── registarDevolProductosData (PHP lines 2092-2137) ───
@@ -114,17 +114,17 @@ class DevolucionProductoService {
         const fecha = new Date().toLocaleDateString('en-CA');
         const fechaHora = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
         const validacion = await this._validarDatosDevolucion(idPlantaAlmacen, idArea, productos);
-        if (!validacion.status) {
+        if (!validacion.success) {
             return validacion;
         }
         const transaction = await beginTransaction();
         try {
             await this._registarDevolProductosData(idPlantaAlmacen, idArea, idUsuario, fechaHora, fecha, productos, transaction);
             await transaction.commit();
-            return { status: true, message: 'Se guardo correctamente la información.' };
+            return { success: true, message: 'Se guardo correctamente la información.' };
         } catch (error) {
             await transaction.rollback();
-            return { status: false, message: 'Ocurio un error.' };
+            return { success: false, message: 'Ocurio un error.' };
         }
     }
 
@@ -133,9 +133,9 @@ class DevolucionProductoService {
         const fin = fechaFin + ' 23:59:59';
         const productos = await Repo.listarDevoluciones(idPlantaAlmacen, inicio, fin);
         if (!productos || productos.length === 0) {
-            return { status: false, message: 'No existen productos registrados.' };
+            return { success: false, message: 'No existen productos registrados.' };
         }
-        return { status: true, productos };
+        return { success: true, productos };
     }
 }
 
