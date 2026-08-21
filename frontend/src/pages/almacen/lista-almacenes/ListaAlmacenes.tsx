@@ -1,10 +1,30 @@
+/**
+ * ListaAlmacenes.tsx
+ * 
+ * 1. Propósito de la Vista:
+ *    Gestión centralizada de almacenes, recetas e insumos por unidad productiva.
+ *    Permite visualizar, registrar, editar, activar/desactivar almacenes y explorar
+ *    sus relaciones de solicitud (solicita_a y puede_solicitarle).
+ * 
+ * 2. APIs Utilizadas:
+ *    - GET /v1/almacen (Listar almacenes con recetas, estado y configuraciones)
+ *    - GET /v1/almacen/activos (Listar almacenes activos para selectores)
+ *    - POST /v1/almacen (Crear nuevo almacén)
+ *    - PUT /v1/almacen/:id (Editar almacén existente)
+ *    - PATCH /v1/almacen/recetas-almacen/estado (Modificar disponibilidad de recetas)
+ * 
+ * 3. Controles Clave:
+ *    - Control único de Gestión PI: Solo un almacén en el sistema puede tener GESTION_PI activo.
+ *    - Modal de Vínculos & Permisos de Solicitud: Visualización de almacenes a los que solicita y almacenes que le solicitan.
+ *    - Persistencia de borradores ante 401 / refrescos.
+ */
+
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   SwipeableDrawer,
   Box,
   IconButton,
   Chip,
-  Divider,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -14,6 +34,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import ModalNewAlmacen from './components/ModalNewAlmacen';
+import ModalRelacionesAlmacen from './components/ModalRelacionesAlmacen';
 import { useListaAlmacenesServices } from './services/useListaAlmacenes';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
@@ -55,7 +76,8 @@ const WarehouseCard: React.FC<{
   onOpenDetail: (w: Warehouse) => void;
   onEdit: (w: Warehouse) => void;
   onToggleStatus: (w: Warehouse) => void;
-}> = ({ warehouse, onOpenDetail, onEdit, onToggleStatus }) => (
+  onOpenRelaciones: (w: Warehouse) => void;
+}> = ({ warehouse, onOpenDetail, onEdit, onToggleStatus, onOpenRelaciones }) => (
   <div
     className={`rounded-[2rem] border p-3 shadow-sm hover:shadow-xl transition-all group flex flex-col justify-between 
       ${warehouse.ESTADO === 1
@@ -109,28 +131,44 @@ const WarehouseCard: React.FC<{
       <h2 className="text-base font-bold text-on-surface uppercase tracking-tight font-headline mb-1">
         {warehouse.DESCRICION}
       </h2>
-      <div className="flex items-center gap-1 text-on-surface-variant mb-6">
-        <span className="material-symbols-outlined text-[16px]">restaurant_menu</span>
-        <span className="text-[10px] font-black uppercase tracking-widest">{warehouse.RECETAS.length} Recetas</span>
+      <div className="flex items-center justify-between text-on-surface-variant mb-4">
+        <div className="flex items-center gap-1">
+          <span className="material-symbols-outlined text-[16px]">restaurant_menu</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">{warehouse.RECETAS.length} Recetas</span>
+        </div>
+        <div className="flex items-center gap-1 text-primary">
+          <span className="material-symbols-outlined text-[15px]">alt_route</span>
+          <span className="text-[9px] font-black uppercase tracking-wider">
+            {(warehouse.solicita_a?.length || 0) + (warehouse.puede_solicitarle?.length || 0)} Vínculos
+          </span>
+        </div>
       </div>
     </div>
 
     <div className="flex items-center justify-end gap-2 pt-2 border-t border-outline-variant">
       <button
         type="button"
-        onClick={() => onEdit(warehouse)}
-        className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-inner hover:bg-amber-500/20 transition-all cursor-pointer"
-        title="Editar"
+        onClick={() => onOpenRelaciones(warehouse)}
+        title="Ver Vínculos de Solicitud (Puede solicitar A / Le pueden solicitar)"
+        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
       >
-        <span className="material-symbols-outlined text-2xl font-bold">edit</span>
+        <span className="material-symbols-outlined text-[14px] sm:text-base">alt_route</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onEdit(warehouse)}
+        title="Editar Almacén"
+        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 dark:border-amber-500/10 hover:bg-amber-500 hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
+      >
+        <span className="material-symbols-outlined text-[14px] sm:text-base">edit</span>
       </button>
       <button
         type="button"
         onClick={() => onOpenDetail(warehouse)}
-        className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner hover:bg-primary/20 transition-all cursor-pointer"
-        title="Ver"
+        title="Ver Detalle y Recetas"
+        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 dark:border-emerald-500/10 hover:bg-emerald-500 hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
       >
-        <span className="material-symbols-outlined text-2xl font-bold">visibility</span>
+        <span className="material-symbols-outlined text-[14px] sm:text-base">visibility</span>
       </button>
     </div>
   </div>
@@ -144,6 +182,10 @@ export const ListaAlmacenes: React.FC = () => {
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Modal Relaciones (puede_solicitarle y solicita_a)
+  const [isRelacionesModalOpen, setIsRelacionesModalOpen] = useState(false);
+  const [relacionesWarehouse, setRelacionesWarehouse] = useState<Warehouse | null>(null);
 
   // Search States
   const [mainSearch, setMainSearch] = useState('');
@@ -181,6 +223,11 @@ export const ListaAlmacenes: React.FC = () => {
     setSelectedWarehouse(w);
     setRecipeSearch(''); // Reset drawer search
     setDetailDrawerOpen(true);
+  };
+
+  const handleOpenRelaciones = (w: Warehouse) => {
+    setRelacionesWarehouse(w);
+    setIsRelacionesModalOpen(true);
   };
 
   const handleEdit = (w: Warehouse) => {
@@ -306,11 +353,11 @@ export const ListaAlmacenes: React.FC = () => {
   }, [selectedWarehouse, recipeSearch]);
 
   return (
-    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-12">
+    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-1">
       <LoadingOverlay show={isLoading} message="Cargando información de almacenes..." />
 
       {/* Header Section */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-1">
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-on-background uppercase font-headline">
             Gestión de Almacenes
@@ -320,7 +367,7 @@ export const ListaAlmacenes: React.FC = () => {
           </p>
         </div>
 
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2 flex-wrap">
           <Button
             onClick={() => { setEditingWarehouse(null); setIsModalOpen(true); }}
             variant="primary"
@@ -346,7 +393,7 @@ export const ListaAlmacenes: React.FC = () => {
       </div>
 
       {/* Grid Section */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8 mt-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 mt-2">
         {filteredWarehouses.map((w) => (
           <WarehouseCard
             key={w.ID_PLANTA_ALMACEN}
@@ -354,6 +401,7 @@ export const ListaAlmacenes: React.FC = () => {
             onOpenDetail={handleOpenDetail}
             onEdit={handleEdit}
             onToggleStatus={toggleWarehouseStatus}
+            onOpenRelaciones={handleOpenRelaciones}
           />
         ))}
         {filteredWarehouses.length === 0 && !isLoading && (
@@ -548,6 +596,13 @@ export const ListaAlmacenes: React.FC = () => {
         onSave={handleSaveWarehouse}
         allWarehouses={activeWarehouses}
         currentGestionPiId={gestionPiId}
+      />
+
+      <ModalRelacionesAlmacen
+        open={isRelacionesModalOpen}
+        onClose={() => setIsRelacionesModalOpen(false)}
+        selectedWarehouse={relacionesWarehouse}
+        allWarehouses={warehouses}
       />
     </div>
   );

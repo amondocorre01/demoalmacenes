@@ -44,7 +44,7 @@ export const ModalAsignacionAlmacenUsuario: React.FC<ModalAsignacionAlmacenUsuar
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const { setAccesoAlmacen } = useAccesibilidadAlmacenUsuario();
+  const { loadApiSetAccesoAlmacen } = useAccesibilidadAlmacenUsuario();
   const [filterQuery, setFilterQuery] = useState('');
   const [assignedSet, setAssignedSet] = useState<Set<number>>(new Set());
 
@@ -99,7 +99,7 @@ export const ModalAsignacionAlmacenUsuario: React.FC<ModalAsignacionAlmacenUsuar
 
     // 4. Petición en segundo plano (Background API call)
     try {
-      const res = await setAccesoAlmacen(almacenId, usuario.ID_USUARIO, newEstado);
+      const res = await loadApiSetAccesoAlmacen(almacenId, usuario.ID_USUARIO, newEstado);
       if (res && res.success === false) {
         // Revertir si el servidor responde con error
         setAssignedSet((prev) => {
@@ -138,7 +138,6 @@ export const ModalAsignacionAlmacenUsuario: React.FC<ModalAsignacionAlmacenUsuar
       maxWidth="sm"
       fullWidth
       fullScreen={isMobile}
-      TransitionComponent={Zoom}
       slotProps={{
         paper: {
           sx: {

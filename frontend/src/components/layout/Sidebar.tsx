@@ -35,7 +35,7 @@ const staticMenuItems: ApiMenuItem[] = [
   { id: 316, nombre: 'Productos intermedios', ruta: '/almacen/productos-intermedios', icono: 'inventory_2', orden: 6 },
 
   // ALMACÉN: OPERACIONES
-  { id: 321, nombre: 'Pedidos consolidados almacén', ruta: '/almacen/pedidos-consolidados-almacen', icono: 'inventory', orden: 7 },
+  // { id: 321, nombre: 'Pedidos consolidados almacén', ruta: '/almacen/pedidos-consolidados-almacen', icono: 'inventory', orden: 7 },
   { id: 322, nombre: 'Solicitud Almacén', ruta: '/almacen/solicitud', icono: 'description', orden: 8 },
   { id: 323, nombre: 'Transferencia almacén', ruta: '/almacen/transferencia', icono: 'swap_horiz', orden: 9 },
   { id: 324, nombre: 'Transferencia Almacén Insumos', ruta: '/almacen/transferencia-insumos', icono: 'move_item', orden: 10 },

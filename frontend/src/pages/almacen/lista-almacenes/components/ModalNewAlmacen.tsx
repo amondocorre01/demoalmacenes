@@ -30,8 +30,6 @@ interface ModalNewAlmacenProps {
   currentGestionPiId?: number | null; // ID del almacén que actualmente tiene gestion_pi = 1
 }
 
-const DRAFT_KEY = 'draft_registro_almacen';
-
 const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
   open,
   onClose,
@@ -45,7 +43,7 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
 
   const defaultForm = {
     nombre: '',
-    produccion: false,   // estado_produccion
+    produccion: true,    // estado_produccion por defecto activo al registrar
     activo: true,        // estado
     gestion_pi: false,
     solicitud_planta: false,
@@ -56,7 +54,7 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
   const [formData, setFormData] = useState(defaultForm);
   const isEditing = !!data;
 
-  // ───────────── Carga / restauración de formulario ─────────────
+  // ───────────── Carga de formulario ─────────────
   useEffect(() => {
     if (!open) return;
 
@@ -76,35 +74,10 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
         solicita_a: solicita_a_loaded,
       });
     } else {
-      // Modo creación: intentar restaurar borrador
-      const draft = localStorage.getItem(DRAFT_KEY);
-      if (draft) {
-        try {
-          const parsed = JSON.parse(draft);
-          const solicita_a_restored: AlmacenOption[] = (parsed.solicita_a_ids || [])
-            .map((id: number) => allWarehouses.find(w => w.ID_PLANTA_ALMACEN === id))
-            .filter(Boolean) as AlmacenOption[];
-          setFormData({ ...parsed, solicita_a: solicita_a_restored });
-        } catch {
-          setFormData(defaultForm);
-        }
-      } else {
-        setFormData(defaultForm);
-      }
+      // Modo creación: inicializar con valores por defecto
+      setFormData(defaultForm);
     }
   }, [data, open, allWarehouses]);
-
-  // ───────────── Auto-guardado de borrador ─────────────
-  useEffect(() => {
-    if (open && !data) {
-      const draftPayload = {
-        ...formData,
-        solicita_a_ids: formData.solicita_a.map(w => w.ID_PLANTA_ALMACEN),
-        solicita_a: []
-      };
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draftPayload));
-    }
-  }, [formData, open, data]);
 
   // ───────────── Control gestion_pi ─────────────
   const handleGestionPiChange = (checked: boolean) => {
@@ -132,12 +105,10 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
       solicita_a: formData.solicita_a.map(w => ({ id_almacen: w.ID_PLANTA_ALMACEN, estado: 1 })),
     };
     if (onSave) onSave(payload);
-    localStorage.removeItem(DRAFT_KEY);
     onClose();
   };
 
   const handleCancel = () => {
-    if (!data) localStorage.removeItem(DRAFT_KEY);
     onClose();
   };
 
@@ -176,7 +147,9 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
       slotProps={{
         paper: {
           sx: {
-            borderRadius: isMobile ? 0 : '1.75rem',
+            width: isMobile ? '100%' : undefined,
+            m: isMobile ? 0 : 2,
+            borderRadius: isMobile ? '1rem' : '1.75rem',
             overflow: 'hidden',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
             bgcolor: 'var(--surface, #ffffff)',
@@ -220,26 +193,6 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
       <DialogContent sx={{ p: { xs: 2, sm: 3 }, bgcolor: 'var(--surface, #ffffff)', maxH: '78vh', overflowY: 'auto' }}>
         <div className="space-y-5">
 
-          {/* Banner de Aviso de Borrador */}
-          {!data && localStorage.getItem(DRAFT_KEY) && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 text-amber-700 dark:text-amber-400">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-base">history</span>
-                <span className="text-[9px] font-black uppercase tracking-wider">Se ha restaurado un borrador guardado automáticamente</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.removeItem(DRAFT_KEY);
-                  setFormData(defaultForm);
-                }}
-                className="text-[8px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400 underline hover:opacity-80 cursor-pointer"
-              >
-                Limpiar
-              </button>
-            </div>
-          )}
-
           {/* ── BLOQUE 1: Datos Principales ── */}
           <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
             <div className="flex items-center justify-between border-b border-outline-variant/40 pb-2">
@@ -247,9 +200,11 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
                 <span className="material-symbols-outlined text-lg">badge</span>
                 <span className="text-[10px] font-black uppercase tracking-widest font-headline">Información Principal</span>
               </div>
-              <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider ${formData.activo ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'}`}>
-                {formData.activo ? '● Almacén Activo' : '○ Almacén Inactivo'}
-              </span>
+              {isEditing && (
+                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider ${formData.activo ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'}`}>
+                  {formData.activo ? '● Almacén Activo' : '○ Almacén Inactivo'}
+                </span>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -282,23 +237,25 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
               </span>
             </div>
 
-            {/* Switch Estado del Almacén */}
-            <div className="p-3 bg-surface rounded-xl border border-outline-variant/60 flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
-                  Estado Operativo
-                </p>
-                <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
-                  {formData.activo ? 'Permite transacciones y movimiento de inventario' : 'Bloquea operaciones temporales en este almacén'}
-                </p>
+            {/* Switch Estado del Almacén (Solo al editar) */}
+            {isEditing && (
+              <div className="p-3 bg-surface rounded-xl border border-outline-variant/60 flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
+                    Estado Operativo
+                  </p>
+                  <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
+                    {formData.activo ? 'Permite transacciones y movimiento de inventario' : 'Bloquea operaciones temporales en este almacén'}
+                  </p>
+                </div>
+                <Switch
+                  size="small"
+                  checked={formData.activo}
+                  onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
+                  sx={switchSx}
+                />
               </div>
-              <Switch
-                size="small"
-                checked={formData.activo}
-                onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-                sx={switchSx}
-              />
-            </div>
+            )}
           </div>
 
           {/* ── BLOQUE 2: Áreas & Roles Especiales ── */}

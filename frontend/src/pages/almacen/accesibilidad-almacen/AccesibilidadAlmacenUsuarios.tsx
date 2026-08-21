@@ -32,7 +32,7 @@ import {
 } from './services/useAccesibilidadAlmacenUsuario';
 
 const AccesibilidadAlmacenUsuarios: React.FC = () => {
-  const { getAlmacenesActivos, getAccesibilidadAlmacenes } = useAccesibilidadAlmacenUsuario();
+  const { loadApiGetAlmacenesActivos, loadApiGetAccesibilidadAlmacenes } = useAccesibilidadAlmacenUsuario();
 
   // Estados principales
   const [usuarios, setUsuarios] = useState<UsuarioAccesibilidadAlmacen[]>([]);
@@ -58,8 +58,8 @@ const AccesibilidadAlmacenUsuarios: React.FC = () => {
     setLoading(true);
     try {
       const [almacenesRes, usuariosRes] = await Promise.all([
-        getAlmacenesActivos(),
-        getAccesibilidadAlmacenes(),
+        loadApiGetAlmacenesActivos(),
+        loadApiGetAccesibilidadAlmacenes(),
       ]);
 
       if (almacenesRes) setAlmacenes(almacenesRes);

@@ -12,7 +12,7 @@ import MUITest from './pages/MUITest';
 import ListaAlmacenes from './pages/almacen/lista-almacenes/ListaAlmacenes';
 import CrearReceta from './pages/almacen/crear-receta/CrearReceta';
 import AsignarProducto from './pages/almacen/asignar-producto/AsignarProducto';
-import PedidosConsolidados from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
+//import PedidosConsolidados from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
 import TransferenciaAlmacen from './pages/almacen/transferencia-almacen/TransferenciaAlmacen';
 import TransferenciaInsumos from './pages/almacen/transferencia-insumos/TransferenciaInsumos';
 import DevolucionAlmacen from './pages/almacen/devolucion-almacen/DevolucionAlmacen';
@@ -40,7 +40,7 @@ import RegistroFacturasInsumos from './pages/almacen/registro-facturas-insumos/R
 import RegistroProduccion from './pages/almacen/registro-produccion/RegistroProduccion';
 import AccesibilidadAlmacenUsuarios from './pages/almacen/accesibilidad-almacen/AccesibilidadAlmacenUsuarios';
 
-import PedidosConsolidadosAlmacen from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
+//import PedidosConsolidadosAlmacen from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
 import HelpCenter from './pages/help/HelpCenter';
 import AuthCallback from './pages/auth/Callback';
 
@@ -75,7 +75,7 @@ const App: React.FC = () => {
           <Route path="/almacen/productos-intermedios" element={<ProductosIntermedios />} />
 
           {/* ALMACÉN: OPERACIONES */}
-          <Route path="/almacen/pedidos-consolidados-almacen" element={<PedidosConsolidadosAlmacen />} />
+          {/* <Route path="/almacen/pedidos-consolidados-almacen" element={<PedidosConsolidadosAlmacen />} /> */}
           <Route path="/almacen/solicitud" element={<SolicitudesAlmacen />} />
           <Route path="/almacen/transferencia" element={<TransferenciaAlmacen />} />
           <Route path="/almacen/transferencia-insumos" element={<TransferenciaInsumos />} />

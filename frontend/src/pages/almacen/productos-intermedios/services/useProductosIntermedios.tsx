@@ -112,7 +112,7 @@ export const useProductosIntermediosServices = () => {
      * Obtiene la receta completa de un producto intermedio (SP).
      * @param id - ID del producto intermedio (ID_PRODUCTO_INTERMEDIO)
      */
-    const loadApiGetRecetaIntermedio = async (id: number | string) => {
+    const loadApiGetRecetaIntermedio = async  (id: number | string) => {
         try {
             const respuesta = await api.get<any>(`/v1/productos-intermedios/receta-intermedio/${id}`)
             return respuesta.data

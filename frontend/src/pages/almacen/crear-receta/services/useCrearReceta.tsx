@@ -13,14 +13,6 @@ export const useNewRecetaAlmacenesServices = () => {
         }
     }
 
-    /**-RECETA ALMACEN
-/almacen/list_almacen_usuario
-/almacen/getRecetaByAlamcen
-/almacen/get_productos_categoria_2
-/almacen/listar_productosIntermediosActivos
-/almacen/getProductosForReceta
-/almacen/save_receta */
-
     /*| # | Método | Nueva Ruta (Node.js) | Ruta Original PHP | Descripción |
     |---|--------|----------------------|-------------------|-------------|
     | 3 | `GET` | `/almacen-receta/usuarios/almacenes` | `POST /almacen/list_almacen_usuario` | Listar almacenes del usuario |
