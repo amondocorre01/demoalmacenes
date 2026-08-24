@@ -91,14 +91,14 @@ class RecetasIntermediasRepository {
         return result.recordset;
     }
 
-    async addProductoIntAlmacen(idAlmacen, idProductoIntermedio, estado) {
+    async addProductoIntAlmacen(idAlmacen, idProductoIntermedio, estado, transaction = null) {
         const existe = await query(`
             SELECT * FROM PLANTA_ALMACEN_PRODUCTO_INTERMEDIO
             WHERE ID_PLANTA_ALMACEN = @idAlmacen AND ID_PRODUCTO_INTERMEDIO = @idProductoIntermedio
         `, [
             { name: 'idAlmacen', value: idAlmacen },
             { name: 'idProductoIntermedio', value: idProductoIntermedio }
-        ]);
+        ], 'planta', transaction);
 
         if (existe.recordset.length > 0) {
             await query(`
@@ -108,7 +108,7 @@ class RecetasIntermediasRepository {
                 { name: 'idAlmacen', value: idAlmacen },
                 { name: 'idProductoIntermedio', value: idProductoIntermedio },
                 { name: 'estado', value: estado }
-            ]);
+            ], 'planta', transaction);
         } else {
             await query(`
                 INSERT INTO PLANTA_ALMACEN_PRODUCTO_INTERMEDIO (ESTADO, ID_PLANTA_ALMACEN, ID_PRODUCTO_INTERMEDIO)
@@ -117,7 +117,7 @@ class RecetasIntermediasRepository {
                 { name: 'idAlmacen', value: idAlmacen },
                 { name: 'idProductoIntermedio', value: idProductoIntermedio },
                 { name: 'estado', value: estado }
-            ]);
+            ], 'planta', transaction);
         }
         return true;
     }
@@ -134,7 +134,7 @@ class RecetasIntermediasRepository {
         return result.recordset.length > 0;
     }
 
-    async crearProductoIntermedio({ nombre, duracion, porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0 }) {
+    async crearProductoIntermedio({ nombre, duracion, porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0 }, transaction = null) {
         const result = await query(`
             INSERT INTO PLANTA_PRODUCTO_INTERMEDIO
             (NOMBRE, ESTADO, DURACION, PORCENTAJE_DESPERDICIO, PROD_PRIMARIO, NOTA, ESTADO_PRODUCCION)
@@ -147,7 +147,7 @@ class RecetasIntermediasRepository {
             { name: 'productoPrimario', value: producto_primario },
             { name: 'nota', value: nota },
             { name: 'estadoProduccion', value: estado_produccion }
-        ]);
+        ], 'planta', transaction);
         return result.recordset[0]?.id || 0;
     }
 
@@ -326,7 +326,7 @@ class RecetasIntermediasRepository {
         return result.rowsAffected[0] > 0;
     }
 
-    async agregarProductoRI(idPlantaRiPi, idProductoIntermedioAntecesor, idProducto, cantidad, idUnidadMedida, numReceta) {
+    async agregarProductoRI(idPlantaRiPi, idProductoIntermedioAntecesor, idProducto, cantidad, idUnidadMedida, numReceta, transaction = null) {
         const result = await query(`
             INSERT INTO PLANTA_RECETA_INTERMEDIO
             (ID_PLANTA_RI_PI, ID_PRODUCTO_INTERMEDIO_ANTECESOR, ID_PRODUCTO, CANTIDAD, ID_UNIDAD_MEDIDA, NUM_RECETA, ESTADO)
@@ -339,11 +339,11 @@ class RecetasIntermediasRepository {
             { name: 'cantidad', value: cantidad },
             { name: 'idUnidadMedida', value: idUnidadMedida },
             { name: 'numReceta', value: numReceta }
-        ]);
+        ], undefined, transaction);
         return result.recordset[0]?.id || 0;
     }
 
-    async registrarLogProductosRI(idRecetaIntermedio, cantidad, idUnidadMedida, estado, idUsuario, fecha, accion) {
+    async registrarLogProductosRI(idRecetaIntermedio, cantidad, idUnidadMedida, estado, idUsuario, fecha, accion, transaction = null) {
         const result = await query(`
             INSERT INTO PLANTA_RECETA_INTERMEDIO_LOG
             (ID_RECETA_INTERMEDIO, CANTIDAD, ID_UNIDAD_MEDIDA, ESTADO,
@@ -358,8 +358,128 @@ class RecetasIntermediasRepository {
             { name: 'idUsuario', value: idUsuario },
             { name: 'fecha', value: fecha },
             { name: 'accion', value: accion }
-        ]);
+        ], undefined, transaction);
         return result.rowsAffected[0] > 0;
+    }
+
+    async getRecetaById(idProductoIntermedio, idPlantaRiPi, transaction = null) {
+        const result = await query(`
+            SELECT * FROM PLANTA_RI_PI
+            WHERE ID_PLANTA_RI_PI = @idPlantaRiPi
+            AND ID_PRODUCTO_INTERMEDIO = @idProductoIntermedio
+        `, [
+            { name: 'idProductoIntermedio', value: idProductoIntermedio },
+            { name: 'idPlantaRiPi', value: idPlantaRiPi }
+        ], 'planta', transaction);
+        return result.recordset[0] || null;
+    }
+
+    async clonarRecetaIntermedio(receta, numReceta, transaction = null) {
+        const result = await query(`
+            INSERT INTO PLANTA_RI_PI
+            (ESTADO, NUM_RECETA, CANTIDAD_ESTANDAR, ID_PRODUCTO_INTERMEDIO,
+             ID_UNIDAD_MEDIDA_ESTANDAR, CANTIDAD_ADECUACION, ID_UNIDAD_MEDIDA_ADECUACION)
+            SELECT 1, @numReceta, CANTIDAD_ESTANDAR, ID_PRODUCTO_INTERMEDIO,
+                   ID_UNIDAD_MEDIDA_ESTANDAR, CANTIDAD_ADECUACION, ID_UNIDAD_MEDIDA_ADECUACION
+            FROM PLANTA_RI_PI WHERE ID_PLANTA_RI_PI = @idPlantaRiPi;
+            SELECT SCOPE_IDENTITY() as id;
+        `, [
+            { name: 'numReceta', value: numReceta },
+            { name: 'idPlantaRiPi', value: receta.ID_PLANTA_RI_PI }
+        ], 'planta', transaction);
+        return result.recordset[0]?.id || 0;
+    }
+
+    async getProductosRI(idPlantaRiPi, transaction = null) {
+        const result = await query(`
+            SELECT ID_PRODUCTO, CANTIDAD, ESTADO, ID_PRODUCTO_INTERMEDIO_ANTECESOR,
+                   ID_UNIDAD_MEDIDA, NUM_RECETA, ID_PLANTA_RI_PI
+            FROM PLANTA_RECETA_INTERMEDIO
+            WHERE ID_PLANTA_RI_PI = @idPlantaRiPi
+        `, [{ name: 'idPlantaRiPi', value: idPlantaRiPi }], undefined, transaction);
+        return result.recordset;
+    }
+
+    async clonarProductoRI(producto, nuevoIdPlantaRiPi, numReceta, transaction = null) {
+        const result = await query(`
+            INSERT INTO PLANTA_RECETA_INTERMEDIO
+            (ID_PLANTA_RI_PI, ID_PRODUCTO_INTERMEDIO_ANTECESOR, ID_PRODUCTO, CANTIDAD, ID_UNIDAD_MEDIDA, NUM_RECETA, ESTADO)
+            VALUES (@nuevoIdPlantaRiPi, @idProductoIntermedioAntecesor, @idProducto, @cantidad, @idUnidadMedida, @numReceta, @estado);
+            SELECT SCOPE_IDENTITY() as id;
+        `, [
+            { name: 'nuevoIdPlantaRiPi', value: nuevoIdPlantaRiPi },
+            { name: 'idProductoIntermedioAntecesor', value: producto.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0 },
+            { name: 'idProducto', value: producto.ID_PRODUCTO || 0 },
+            { name: 'cantidad', value: producto.CANTIDAD },
+            { name: 'idUnidadMedida', value: producto.ID_UNIDAD_MEDIDA },
+            { name: 'numReceta', value: numReceta },
+            { name: 'estado', value: producto.ESTADO }
+        ], undefined, transaction);
+        return result.recordset[0]?.id || 0;
+    }
+
+    async registrarLogsRI(idProductoIntermedio, idUsuario, fecha, transaction = null) {
+        const recetas = await query(`
+            SELECT * FROM PLANTA_RI_PI
+            WHERE ID_PRODUCTO_INTERMEDIO = @idProductoIntermedio
+        `, [{ name: 'idProductoIntermedio', value: idProductoIntermedio }], 'planta', transaction);
+        for (const receta of recetas.recordset) {
+            await this.registrarLogRI(
+                receta.ID_PLANTA_RI_PI,
+                receta.CANTIDAD_ESTANDAR,
+                receta.ID_UNIDAD_MEDIDA_ESTANDAR,
+                receta.CANTIDAD_ADECUACION,
+                receta.ID_UNIDAD_MEDIDA_ADECUACION,
+                0, idUsuario, fecha, 'UPDATE', transaction
+            );
+        }
+        return true;
+    }
+
+    async getNumRecetaById(idPlantaRiPi, transaction = null) {
+        const result = await query(`
+            SELECT NUM_RECETA FROM PLANTA_RI_PI
+            WHERE ID_PLANTA_RI_PI = @idPlantaRiPi
+        `, [{ name: 'idPlantaRiPi', value: idPlantaRiPi }], 'planta', transaction);
+        return result.recordset[0]?.NUM_RECETA || 0;
+    }
+
+    async existeReceta(idSubCategoria2, transaction = null) {
+        const result = await query(`
+            SELECT TOP(1) ID_PLANTA_RECETA FROM PLANTA_RECETA
+            WHERE ID_SUB_CATEGORIA_2 = @idSubCategoria2
+        `, [{ name: 'idSubCategoria2', value: idSubCategoria2 }], 'planta', transaction);
+        return result.recordset[0]?.ID_PLANTA_RECETA || 0;
+    }
+
+    async crearReceta(descripcion, idSubCategoria2, estado, transaction = null) {
+        const result = await query(`
+            INSERT INTO PLANTA_RECETA (DESCRIPCION, ESTADO, ID_SUB_CATEGORIA_2)
+            VALUES (@descripcion, @estado, @idSubCategoria2);
+            SELECT SCOPE_IDENTITY() as id;
+        `, [
+            { name: 'descripcion', value: descripcion },
+            { name: 'estado', value: estado },
+            { name: 'idSubCategoria2', value: idSubCategoria2 }
+        ], 'planta', transaction);
+        return result.recordset[0]?.id || 0;
+    }
+
+    async crearProductoRecta(idReceta, idProducto, idProductoIntermedio, estado, cantidad, idUnidadMedida, transaction = null) {
+        const result = await query(`
+            INSERT INTO PLANTA_PRODUCTO_RECETA
+            (ID_PLANTA_RECETA, ID_PRODUCTO, ID_PRODUCTO_INTERMEDIO, CANTIDAD, ID_UNIDAD_MEDIDA, ESTADO)
+            VALUES (@idReceta, @idProducto, @idProductoIntermedio, @cantidad, @idUnidadMedida, @estado);
+            SELECT SCOPE_IDENTITY() as id;
+        `, [
+            { name: 'idReceta', value: idReceta },
+            { name: 'idProducto', value: idProducto },
+            { name: 'idProductoIntermedio', value: idProductoIntermedio },
+            { name: 'cantidad', value: cantidad },
+            { name: 'idUnidadMedida', value: idUnidadMedida },
+            { name: 'estado', value: estado }
+        ], 'planta', transaction);
+        return result.recordset[0]?.id || 0;
     }
 }
 

@@ -44,10 +44,26 @@ const agregarProductosRISchema = z.object({
     }).passthrough()).min(1, 'Se requiere al menos un producto')
 }).passthrough();
 
+const clonarRecetaRISchema = z.object({
+    id_producto_intermedio: z.number().int().positive('id_producto_intermedio es requerido'),
+    id_planta_ri_pi: z.number().int().positive('id_planta_ri_pi es requerido')
+}).passthrough();
+
+const crearProductoIntermedioAndAddRecetaSchema = crearProductoIntermedioSchema.extend({
+    id_planta_ri_pi: z.number().int().optional().default(0),
+    id_sub_categoria_2: z.number().int().optional().default(0),
+    cantidad_e: z.number().positive('cantidad_e es requerida'),
+    id_unidad_medida_e: z.number().int().positive('id_unidad_medida_e es requerido'),
+    cantidad_a: z.number().positive('cantidad_a es requerida'),
+    id_unidad_medida_a: z.number().int().positive('id_unidad_medida_a es requerido')
+});
+
 module.exports = {
     crearProductoIntermedioSchema,
     asignarProductoIntAlmacenSchema,
     crearRecetaIntermedioSchema,
     editarRecetaIntermedioSchema,
-    agregarProductosRISchema
+    agregarProductosRISchema,
+    clonarRecetaRISchema,
+    crearProductoIntermedioAndAddRecetaSchema
 };

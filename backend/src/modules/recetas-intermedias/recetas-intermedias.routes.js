@@ -7,7 +7,9 @@ const {
     asignarProductoIntAlmacenSchema,
     crearRecetaIntermedioSchema,
     editarRecetaIntermedioSchema,
-    agregarProductosRISchema
+    agregarProductosRISchema,
+    clonarRecetaRISchema,
+    crearProductoIntermedioAndAddRecetaSchema
 } = require('./recetas-intermedias.validation');
 
 // GET
@@ -27,6 +29,8 @@ router.post('/', validate(crearProductoIntermedioSchema), Controller.crearProduc
 router.post('/asignar-almacen', validate(asignarProductoIntAlmacenSchema), Controller.asignarProductoIntAlmacen);
 router.post('/recetas-intermedias', validate(crearRecetaIntermedioSchema), Controller.crearRecetaIntermedio);
 router.post('/recetas-intermedias/productos', validate(agregarProductosRISchema), Controller.agregarProductosRI);
+router.post('/recetas-intermedias/clonar', validate(clonarRecetaRISchema), Controller.clonarRecetaRI); //Modif
+router.post('/producto-and-receta', validate(crearProductoIntermedioAndAddRecetaSchema), Controller.crearProductoIntermedioAndAddReceta); //Modif
 
 // PUT
 router.put('/recetas-intermedias/:id', validate(editarRecetaIntermedioSchema), Controller.editarRecetaIntermedio);
