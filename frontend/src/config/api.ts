@@ -60,6 +60,17 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
+      // Guardar la ruta activa actual (pathname + query string) para retornar tras re-autenticarse
+      const basename = import.meta.env.BASE_URL || '/';
+      const cleanBasename = basename.replace(/\/$/, '');
+      let currentPath = window.location.pathname + window.location.search;
+      if (cleanBasename && currentPath.startsWith(cleanBasename)) {
+        currentPath = currentPath.substring(cleanBasename.length);
+      }
+      if (currentPath && !currentPath.includes('/auth/') && !currentPath.includes('/login')) {
+        localStorage.setItem('auth_redirect_path', currentPath || '/');
+      }
+
       // ¿El usuario tiene sesión activa?
       const hasActiveSession = !!localStorage.getItem('user');
 
@@ -67,9 +78,9 @@ api.interceptors.response.use(
         console.warn(
           '[api] 401 con sesión activa en:',
           originalRequest.url,
-          '→ Token expirado o inválido. Forzando re-autenticación.'
+          '→ Token expirado o inválido. Cerrando sesión automáticamente y guardando ruta de retorno.'
         );
-        // Limpiamos los datos de sesión para que fluya hacia la redirección
+        // Limpiamos credenciales para forzar cierre de sesión sin borrar los borradores (draft_*)
         localStorage.removeItem('user');
         localStorage.removeItem('token');
         sessionStorage.clear();
@@ -104,9 +115,7 @@ api.interceptors.response.use(
       loginUrl.searchParams.append('state', state);
       loginUrl.searchParams.append('nonce', nonce);
 
-      localStorage.setItem('auth_redirect_path', window.location.pathname);
-      console.log('[api] Sin sesión → redirigiendo a AuthSystem:', loginUrl.toString());
-      sessionStorage.clear();
+      console.log('[api] 401 → redirigiendo a AuthSystem guardando ruta de retorno:', currentPath || '/');
       window.location.href = loginUrl.toString();
     }
 

@@ -1,435 +1,445 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Autocomplete, 
-  TextField, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  Switch, 
-  IconButton, 
-  InputAdornment,
-  useTheme,
-  useMediaQuery,
-  Snackbar,
-  Alert,
-  Divider
-} from '@mui/material';
+/**
+ * ProductosIntermedios.tsx
+ * 
+ * 1. Propósito de la vista:
+ *    Gestión integral, consulta y registro de Productos Intermedios (bases, concentrados, masas y rellenos).
+ *    Permite administrar parámetros operativos como días de duración, porcentaje de desperdicio,
+ *    producto primario, requerimiento de loteo y vinculación con almacenes activos.
+ * 
+ * 2. APIs Utilizadas:
+ *    - GET /v1/productos-intermedios/usuarios/almacenes (loadApiGetAlmacenesUsuario - Listar almacenes del usuario)
+ *    - GET /v1/productos-intermedios/unidades-medida (loadApiGetUnidadesMedida - Listar catálogo de medidas)
+ *    - GET /v1/productos-intermedios (loadApiGetProductosIntermedios - Listar productos intermedios)
+ *    - GET /v1/productos-intermedios/recetas?id_sub_2=X (loadApiGetRecetasBySub2 - Recetas por subcategoría)
+ *    - GET /v1/productos-intermedios/almacenes/:id/recetas (loadApiGetRecetasByAlmacen - Recetas por almacén)
+ *    - GET /v1/productos-intermedios/receta-intermedio/:id (loadApiGetRecetaIntermedio - Receta completa de PI)
+ *    - POST /v1/productos-intermedios (loadApiCrearProductoIntermedio - Crear nuevo PI)
+ *    - PUT /v1/productos-intermedios/:id (loadApiEditarProductoIntermedio - Actualizar datos de PI)
+ *    - PATCH /v1/productos-intermedios/recetas-almacen/estado (loadApiUpdateEstadoRecetaAlmacen - Estado receta/almacén)
+ * 
+ * 3. Controles Clave:
+ *    - Tabla unificada compacta y responsiva según especificación oficial de AGENTS.md.
+ *    - Buscador tipo píldora en la cabecera superior derecha de la tabla.
+ *    - Paginación dinámica y control de filas visibles por página.
+ *    - Botones de acción tipo icono estandarizados con paleta de color corporativa.
+ *    - Modal estandarizado de registro y edición en components/ModalNuevoProductoIntermedio.tsx.
+ *    - Notificaciones centralizadas mediante showAlert y manejo de errores con handleApiError.
+ */
 
-const warehouses = ['BIZCOCHOS', 'CHEESECAKE', 'ESENCIAS', 'FRUTAS', 'DECORACIONES'];
+import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Button } from '../../../components/common/Button';
+import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { showAlert } from '../../../config/alerts';
+import { useProductosIntermediosServices } from './services/useProductosIntermedios';
+import { ModalNuevoProductoIntermedio } from './components/ModalNuevoProductoIntermedio';
 
-const ProductosIntermedios: React.FC = () => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+export const ProductosIntermedios: React.FC = () => {
   const location = useLocation();
-  const navigate = useNavigate();
+  const {
+    loadApiGetAlmacenesUsuario,
+    loadApiGetProductosIntermedios,
+    loadApiUpdateEstadoRecetaAlmacen
+  } = useProductosIntermediosServices();
 
+  const [productsList, setProductsList] = useState<any[]>([]);
+  const [warehousesList, setWarehousesList] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Filtro de búsqueda interno y paginación
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Estado del Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [registrationSuccess, setRegistrationSuccess] = useState(false);
-  const [registeredProductName, setRegisteredProductName] = useState('');
-  const [registeredProductWarehouse, setRegisteredProductWarehouse] = useState('');
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [editingItem, setEditingItem] = useState<any | null>(null);
 
+  // Cargar datos iniciales desde backend Node.js
+  const fetchAllData = async () => {
+    setIsLoading(true);
+    const [almacenesRes, productosRes] = await Promise.all([
+      loadApiGetAlmacenesUsuario(),
+      loadApiGetProductosIntermedios()
+    ]);
+
+    if (Array.isArray(almacenesRes)) {
+      setWarehousesList(almacenesRes);
+    } else if (almacenesRes?.almacenes || almacenesRes?.data) {
+      setWarehousesList(almacenesRes.almacenes || almacenesRes.data);
+    }
+
+    if (Array.isArray(productosRes)) {
+      setProductsList(productosRes);
+    } else if (productosRes?.productos || productosRes?.data) {
+      setProductsList(productosRes.productos || productosRes.data);
+    } else {
+      setProductsList([]);
+    }
+
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  // Abrir modal automáticamente si se pasa el query param ?openModal=true
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('openModal') === 'true') {
+      setEditingItem(null);
       setIsModalOpen(true);
-      setRegistrationSuccess(false);
     }
   }, [location]);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    warehouse: null as string | null,
-    name: '',
-    measureDescription: '',
-    durationDays: '',
-    wastePercentage: '',
-    isPrimary: false,
-    hasProduction: true
-  });
-
-  const products = [
-    { name: 'ACHACHAIRU-RI.', adjMeasure: '1 Unidad', stdMeasure: '1 Paquete', duration: '30 Dias', waste: '0.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-    { name: 'ASAI-RF', adjMeasure: '1 Unidad', stdMeasure: '1 Unidad', duration: '180 Dias', waste: '0.00 %', status: 'INHABILITADO', statusColor: 'bg-red-100 text-red-700' },
-    { name: 'ASAI-RI', adjMeasure: '1 Unidad', stdMeasure: '1 Paquete', duration: '30 Dias', waste: '0.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-    { name: 'AZUCAR DE CREMERA-RF', adjMeasure: '1 Unidad', stdMeasure: '1 Unidad', duration: '180 Dias', waste: '0.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-    { name: 'AZUCAR DE CREMERA-RI', adjMeasure: '1 Unidad', stdMeasure: '1 Paquete', duration: '30 Dias', waste: '0.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-    { name: 'AZUCAR EN SACHET RF', adjMeasure: '1 Unidad', stdMeasure: '1 Unidad', duration: '120 Dias', waste: '0.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-    { name: 'AZUCAR MORENA 1KG RI', adjMeasure: '1 Kilogramo', stdMeasure: '1 Kilogramo', duration: '180 Dias', waste: '1.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-    { name: 'AZUCAR MORENA EN SACHET-RF', adjMeasure: '1 Unidad', stdMeasure: '1 Unidad', duration: '180 Dias', waste: '0.00 %', status: 'HABILITADO', statusColor: 'bg-green-100 text-green-700' },
-  ];
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setRegistrationSuccess(false);
-    setFormData({
-      warehouse: null,
-      name: '',
-      measureDescription: '',
-      durationDays: '',
-      wastePercentage: '',
-      isPrimary: false,
-      hasProduction: true
+  // Lista filtrada en cliente por buscador tipo píldora
+  const filteredProducts = useMemo(() => {
+    return productsList.filter((item) => {
+      const name = (item.NOMBRE || item.nombre || '').toLowerCase();
+      const note = (item.NOTA || item.nota || '').toLowerCase();
+      const term = searchTerm.toLowerCase();
+      return name.includes(term) || note.includes(term);
     });
+  }, [productsList, searchTerm]);
+
+  // Paginación de tabla
+  const totalItems = filteredProducts.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedProducts = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredProducts.slice(start, start + pageSize);
+  }, [filteredProducts, page, pageSize]);
+
+  // Manejar cambio de estado de receta / almacén
+  const handleToggleState = async (item: any) => {
+    const currentState = item.ESTADO ?? item.estado ?? 1;
+    const newState = currentState === 1 ? 0 : 1;
+
+    const confirmed = await showAlert.confirm(
+      '¿Cambiar estado?',
+      `El producto "${item.NOMBRE || item.nombre}" pasará a estar ${newState === 1 ? 'ACTIVO' : 'INACTIVO'}.`
+    );
+
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    const res = await loadApiUpdateEstadoRecetaAlmacen({
+      id_almacen_producto_intermedio: item.ID_PRODUCTO_INTERMEDIO || item.id,
+      estado: newState
+    });
+    setIsLoading(false);
+
+    if (res && res.success !== false) {
+      showAlert.toast(`Estado actualizado a ${newState === 1 ? 'ACTIVO' : 'INACTIVO'}.`);
+      fetchAllData();
+    }
   };
 
-  const handleSave = () => {
-    if (!formData.name || !formData.warehouse) {
-      setSnackbar({ open: true, message: 'Por favor complete los campos obligatorios', severity: 'error' });
-      return;
-    }
-    setRegisteredProductName(formData.name.toUpperCase());
-    setRegisteredProductWarehouse(formData.warehouse.toUpperCase());
-    setRegistrationSuccess(true);
-    setSnackbar({ open: true, message: 'Producto registrado con éxito', severity: 'success' });
+  const handleCreateNew = () => {
+    setEditingItem(null);
+    setIsModalOpen(true);
   };
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item);
+    setIsModalOpen(true);
+  };
+
+  // Contadores para tarjetas de métricas
+  const totalCount = productsList.length;
+  const activeCount = productsList.filter(p => (p.ESTADO ?? p.estado ?? 1) === 1).length;
+  const inactiveCount = totalCount - activeCount;
 
   return (
-    <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-12">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 px-4 md:px-0">
+    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-6">
+      <LoadingOverlay show={isLoading} message="Cargando productos intermedios..." />
+
+      {/* ── Cabecera Principal Estandarizada (AGENTS.md) ── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <p className="text-3xl font-black text-zinc-900 tracking-tight uppercase leading-none">Productos Intermedios</p>
-          <p className="text-zinc-500 mt-2 font-medium max-w-xl text-sm">Gestión de masas, bases y concentrados para producción final.</p>
+          <h1 className="text-2xl font-bold text-on-background uppercase font-headline">
+            Productos Intermedios
+          </h1>
+          <p className="text-xs font-black text-on-surface-variant mt-1 font-body">
+            Gestión de masas, bases y concentrados para producción final.
+          </p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="w-full md:w-auto bg-zinc-900 text-white px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-primary active:scale-95 transition-all shadow-xl hover:shadow-primary/20 uppercase text-[10px] tracking-widest"
+
+        <Button
+          variant="primary"
+          size="md"
+          icon="add_circle"
+          onClick={handleCreateNew}
+          className="!py-2.5 !px-6 shadow-lg shadow-primary/20 uppercase text-xs font-black"
         >
-          <span className="material-symbols-outlined text-lg">add_circle</span>
           Nuevo Producto
-        </button>
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 px-4 md:px-0">
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-zinc-100">
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>category</span>
-            </div>
-            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full tracking-widest uppercase">+2 hoy</span>
+      {/* ── Tarjetas de Métricas Compactas (AGENTS.md) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        
+        {/* Card 1: Total */}
+        <div className="bg-surface p-5 rounded-2xl border border-outline-variant shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest leading-none">
+              Total Productos
+            </p>
+            <p className="text-2xl font-black text-on-surface mt-2 leading-none">
+              {totalCount}
+            </p>
           </div>
-          <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">Total Productos</p>
-          <p className="text-3xl font-black text-zinc-900 mt-1 uppercase">124</p>
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <span className="material-symbols-outlined text-xl">inventory_2</span>
+          </div>
         </div>
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-zinc-100">
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-            </div>
+
+        {/* Card 2: Activos */}
+        <div className="bg-surface p-5 rounded-2xl border border-outline-variant shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest leading-none">
+              Productos Activos
+            </p>
+            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-2 leading-none">
+              {activeCount}
+            </p>
           </div>
-          <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">Productos Activos</p>
-          <p className="text-3xl font-black text-zinc-900 mt-1 uppercase">116</p>
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <span className="material-symbols-outlined text-xl">check_circle</span>
+          </div>
         </div>
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-zinc-100">
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 rounded-xl bg-zinc-50 text-zinc-400 flex items-center justify-center">
-              <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>cancel</span>
-            </div>
+
+        {/* Card 3: Inactivos */}
+        <div className="bg-surface p-5 rounded-2xl border border-outline-variant shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest leading-none">
+              Productos Inactivos
+            </p>
+            <p className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-2 leading-none">
+              {inactiveCount}
+            </p>
           </div>
-          <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">Productos Inactivos</p>
-          <p className="text-3xl font-black text-zinc-900 mt-1 uppercase">8</p>
+          <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <span className="material-symbols-outlined text-xl">cancel</span>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-zinc-100 overflow-hidden mx-4 md:mx-0">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-100">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+      {/* ── Main Data Canvas / Tabla Unificada (AGENTS.md) ── */}
+      <div className="bg-surface rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+        
+        {/* Header Superior con Buscador Tipo Píldora */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border-b border-outline-variant gap-3 bg-zinc-50/50 dark:bg-zinc-900/40">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-5 bg-primary rounded-full" />
+            <h2 className="text-sm font-bold text-on-surface uppercase font-headline">
+              Listado de Productos Intermedios ({totalItems})
+            </h2>
+          </div>
+
+          {/* Buscador Píldora de Tabla Estándar */}
+          <div className="relative group w-full sm:w-64">
+            <input
+              type="text"
+              placeholder="BUSCAR PRODUCTO..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              className="w-full bg-surface dark:bg-zinc-950 border border-outline-variant rounded-xl py-2 px-4 pl-9 text-[10px] font-black text-on-surface transition-all uppercase tracking-widest focus:ring-4 focus:ring-primary/10 outline-none shadow-sm"
+            />
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">
+              search
+            </span>
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Tabla Responsiva */}
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                <td className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Nombre del Producto</td>
-                <td className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Med. Adecuación</td>
-                <td className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Med. Estándar</td>
-                <td className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Duración</td>
-                <td className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">% Desperdicio</td>
-                <td className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Estado</td>
-                <td className="px-8 py-6"></td>
+              <tr className="bg-surface-variant/30 border-b border-outline-variant">
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">N°</td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Nombre del Producto</td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Duración (Días)</td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">% Desperdicio</td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Primario</td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Estado</td>
+                <td className="pr-6 pl-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">Acciones</td>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-50 text-sm">
-              {products.map((p, idx) => (
-                <tr key={idx} className="hover:bg-zinc-50/30 transition-all group">
-                  <td className="px-8 py-5"><p className="font-black text-zinc-900 uppercase text-xs tracking-tight">{p.name}</p></td>
-                  <td className="px-8 py-5"><span className="text-[11px] font-bold text-zinc-500 uppercase">{p.adjMeasure}</span></td>
-                  <td className="px-8 py-5"><span className="text-[11px] font-bold text-zinc-500 uppercase">{p.stdMeasure}</span></td>
-                  <td className="px-8 py-5"><span className="text-[11px] font-bold text-zinc-500 uppercase">{p.duration}</span></td>
-                  <td className="px-8 py-5"><span className="text-[11px] font-black text-zinc-900 uppercase">{p.waste}</span></td>
-                  <td className="px-8 py-5">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${p.statusColor} shadow-sm`}>
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <IconButton size="small" className="text-zinc-300 hover:text-zinc-900 transition-colors">
-                      <span className="material-symbols-outlined text-lg">more_vert</span>
-                    </IconButton>
+            <tbody className="divide-y divide-outline-variant/30">
+              {paginatedProducts.length > 0 ? (
+                paginatedProducts.map((item, idx) => {
+                  const globalIdx = (page - 1) * pageSize + idx + 1;
+                  const isActivo = (item.ESTADO ?? item.estado ?? 1) === 1;
+
+                  return (
+                    <tr key={idx} className="hover:bg-surface-variant/30 transition-colors group">
+                      <td className="pl-6 pr-2 py-3 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                        <span>{globalIdx}</span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col">
+                          <span className="font-black text-on-surface uppercase text-xs tracking-tight font-headline">
+                            {item.NOMBRE || item.nombre}
+                          </span>
+                          {item.NOTA && (
+                            <span className="text-[9px] text-on-surface-variant font-medium truncate max-w-xs">
+                              {item.NOTA}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-xs font-bold text-on-surface font-mono">
+                          {item.DURACION ?? item.duracion ?? 0} DÍAS
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-xs font-bold text-on-surface font-mono">
+                          {item.PORCENTAJE_DESPERDICIO ?? item.porcentaje_desperdicio ?? 0} %
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                          (item.PRODUCTO_PRIMARIO || item.producto_primario)
+                            ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
+                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
+                        }`}>
+                          {(item.PRODUCTO_PRIMARIO || item.producto_primario) ? 'SÍ' : 'NO'}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                          isActivo
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                        }`}>
+                          {isActivo ? 'HABILITADO' : 'INHABILITADO'}
+                        </span>
+                      </td>
+
+                      {/* Columna Acciones con Botones Estandarizados (AGENTS.md) */}
+                      <td className="pr-6 pl-4 py-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          
+                          {/* Botón Editar */}
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(item)}
+                            title="Editar Producto Intermedio"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px] sm:text-base">edit</span>
+                          </button>
+
+                          {/* Botón Cambiar Estado */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleState(item)}
+                            title={isActivo ? 'Inhabilitar Producto' : 'Habilitar Producto'}
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border transition-all flex items-center justify-center font-bold cursor-pointer ${
+                              isActivo
+                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500 hover:text-white'
+                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500 hover:text-white'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-[14px] sm:text-base">
+                              {isActivo ? 'block' : 'check_circle'}
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center text-on-surface-variant">
+                    <span className="material-symbols-outlined text-4xl mb-2 opacity-30">inventory_2</span>
+                    <p className="text-xs font-black uppercase tracking-wider">No se encontraron productos intermedios</p>
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
-        <div className="px-8 py-6 bg-zinc-50/30 border-t border-zinc-50 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Mostrando {products.length} de 124 productos registrados</p>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 bg-white border border-zinc-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-all shadow-sm">Anterior</button>
-            <button className="w-10 h-10 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-zinc-200">1</button>
-            <button className="w-10 h-10 bg-white border border-zinc-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-all shadow-sm">2</button>
-            <button className="px-4 py-2 bg-white border border-zinc-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-all shadow-sm">Siguiente</button>
+
+        {/* Table Footer / Pagination (AGENTS.md) */}
+        {totalItems > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 border-t border-outline-variant">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                  Mostrar:
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="h-8 rounded-xl bg-surface border border-outline-variant text-[10px] font-black uppercase text-on-surface px-2.5 outline-none shadow-sm cursor-pointer"
+                >
+                  <option value={5}>5 filas</option>
+                  <option value={10}>10 filas</option>
+                  <option value={20}>20 filas</option>
+                  <option value={50}>50 filas</option>
+                </select>
+              </div>
+              <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                Mostrando {totalItems > 0 ? (page - 1) * pageSize + 1 : 0}-{Math.min(page * pageSize, totalItems)} de {totalItems} registros
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="w-8 h-8 rounded-xl bg-surface border border-outline-variant hover:bg-surface-variant text-on-surface disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_left</span>
+              </button>
+              <span className="text-[10px] font-black uppercase text-on-surface-variant px-2">
+                Página {page} de {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                disabled={page === totalPages}
+                className="w-8 h-8 rounded-xl bg-surface border border-outline-variant hover:bg-surface-variant text-on-surface disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_right</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* New Product Modal */}
-      <Dialog 
-        open={isModalOpen} 
+      {/* Modal Estandarizado de Registro y Edición */}
+      <ModalNuevoProductoIntermedio
+        open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        maxWidth="md"
-        fullWidth
-        fullScreen={isMobile}
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: isMobile ? 0 : '2.5rem',
-              p: 1,
-              bgcolor: 'zinc.50/50'
-            }
-          }
-        }}
-      >
-        <DialogTitle sx={{ p: 3, px: 4, bgcolor: 'white', borderBottom: '1px solid', borderColor: 'zinc-50' }}>
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 text-white flex items-center justify-center shadow-xl">
-                <span className="material-symbols-outlined text-2xl">{registrationSuccess ? 'done_all' : 'add_box'}</span>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em]">{registrationSuccess ? 'Éxito en Registro' : 'Gestión de Almacén'}</p>
-                <p className="text-2xl font-black text-zinc-900 uppercase tracking-tight">
-                  {registrationSuccess ? '¡Registro Completado!' : 'Nuevo Producto Intermedio'}
-                </p>
-              </div>
-            </div>
-            <IconButton onClick={handleCloseModal} size="small" className="bg-zinc-50">
-              <span className="material-symbols-outlined text-lg">close</span>
-            </IconButton>
-          </div>
-        </DialogTitle>
-
-        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
-          {registrationSuccess ? (
-            <div className="flex flex-col items-center py-6 space-y-6 animate-in zoom-in-95 duration-300 text-center">
-              <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shadow-lg border-4 border-emerald-50">
-                <span className="material-symbols-outlined text-4xl font-black">done_all</span>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xl font-black text-zinc-900 uppercase tracking-tight">¡Producto Creado Correctamente!</p>
-                <p className="text-zinc-500 font-medium text-xs max-w-md leading-relaxed">
-                  El producto intermedio <strong className="text-zinc-900 uppercase">{registeredProductName}</strong> se registró exitosamente en el almacén de destino <strong className="text-zinc-900 uppercase">{registeredProductWarehouse}</strong>.
-                </p>
-              </div>
-
-              <Divider className="w-full animate-in fade-in" />
-
-              <div className="w-full text-left space-y-4">
-                <div>
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Pasos Siguientes</p>
-                  <p className="text-xs font-black text-zinc-800 uppercase tracking-tight mt-1">¿Qué deseas realizar a continuación?</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Receta Intermedia */}
-                  <div 
-                    onClick={() => {
-                      handleCloseModal();
-                      navigate('/almacen/recetas-intermedias');
-                    }}
-                    className="bg-white hover:bg-zinc-50 p-5 rounded-2xl border border-zinc-150 hover:border-primary shadow-sm flex flex-col justify-between gap-4 cursor-pointer transition-all hover:scale-105 active:scale-95 group text-left"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center shadow-sm">
-                      <span className="material-symbols-outlined text-xl">kitchen</span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-black text-zinc-900 uppercase group-hover:text-primary transition-colors">Registrar Receta Intermedia</p>
-                      <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-tight leading-normal mt-0.5">
-                        Elaborar la receta intermedia para producir este concentrado o base.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Receta Final */}
-                  <div 
-                    onClick={() => {
-                      handleCloseModal();
-                      navigate('/almacen/crear-receta');
-                    }}
-                    className="bg-white hover:bg-zinc-50 p-5 rounded-2xl border border-zinc-150 hover:border-primary shadow-sm flex flex-col justify-between gap-4 cursor-pointer transition-all hover:scale-105 active:scale-95 group text-left"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center shadow-sm">
-                      <span className="material-symbols-outlined text-xl">restaurant_menu</span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-black text-zinc-900 uppercase group-hover:text-primary transition-colors">Registrar Receta Final</p>
-                      <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-tight leading-normal mt-0.5">
-                        Definir la receta comercial final utilizando este nuevo ingrediente intermedio.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
-              {/* Basic Info Section */}
-              <div className="space-y-6">
-                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-1">Identificación y Contexto</p>
-                
-                <Autocomplete
-                  options={warehouses}
-                  value={formData.warehouse}
-                  onChange={(_, v) => setFormData({...formData, warehouse: v})}
-                  renderInput={(params) => <TextField {...params} label="Almacén de Destino" size="small" required />}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
-                />
-
-                <TextField
-                  fullWidth
-                  label="Nombre del Producto"
-                  size="small"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  required
-                  placeholder="EJ. BIZCOCHO DE VAINILLA..."
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
-                />
-
-                <TextField
-                  fullWidth
-                  label="Descripción de Medida"
-                  size="small"
-                  value={formData.measureDescription}
-                  onChange={(e) => setFormData({...formData, measureDescription: e.target.value})}
-                  placeholder="EJ. 1 KG / 1 UNIDAD..."
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
-                />
-              </div>
-
-              {/* Operational Metrics Section */}
-              <div className="space-y-6">
-                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-1">Métricas Operativas</p>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <TextField
-                    label="Duración"
-                    size="small"
-                    type="number"
-                    value={formData.durationDays}
-                    onChange={(e) => setFormData({...formData, durationDays: e.target.value})}
-                    slotProps={{
-                      input: {
-                        endAdornment: <InputAdornment position="end"><span className="text-[9px] font-black uppercase text-zinc-400">Días</span></InputAdornment>,
-                      }
-                    }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
-                  />
-                  <TextField
-                    label="Desperdicio"
-                    size="small"
-                    type="number"
-                    value={formData.wastePercentage}
-                    onChange={(e) => setFormData({...formData, wastePercentage: e.target.value})}
-                    slotProps={{
-                      input: {
-                        endAdornment: <InputAdornment position="end"><span className="text-[9px] font-black uppercase text-zinc-400">%</span></InputAdornment>,
-                      }
-                    }}
-                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }}
-                  />
-                </div>
-
-                <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-100 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-black text-zinc-900 uppercase">Producto Primario</p>
-                      <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Habilita vinculación directa</p>
-                    </div>
-                    <Switch 
-                      checked={formData.isPrimary} 
-                      onChange={(e) => setFormData({...formData, isPrimary: e.target.checked})}
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': { color: 'primary.main' },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'primary.main' }
-                      }}
-                    />
-                  </div>
-                  <Divider />
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-black text-zinc-900 uppercase">Habilitar Producción</p>
-                      <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Disponible en el módulo de producción</p>
-                    </div>
-                    <Switch 
-                      checked={formData.hasProduction} 
-                      onChange={(e) => setFormData({...formData, hasProduction: e.target.checked})}
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': { color: 'primary.main' },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'primary.main' }
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-
-        <DialogActions sx={{ p: 4, bgcolor: 'white', borderTop: '1px solid', borderColor: 'zinc-50' }}>
-          {registrationSuccess ? (
-            <button 
-              onClick={handleCloseModal}
-              className="h-12 px-10 bg-zinc-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-zinc-200 hover:bg-zinc-800 transition-all active:scale-95 flex items-center gap-3"
-            >
-              <span className="material-symbols-outlined text-lg">close</span>
-              Cerrar Asistente
-            </button>
-          ) : (
-            <>
-              <Button 
-                onClick={handleCloseModal} 
-                sx={{ color: 'zinc-400', fontWeight: 900, fontSize: '10px', px: 4, letterSpacing: '0.1em' }}
-              >
-                Cancelar
-              </Button>
-              <button 
-                onClick={handleSave}
-                className="h-12 px-10 bg-zinc-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-zinc-200 hover:bg-primary hover:shadow-primary/20 transition-all active:scale-95 flex items-center gap-3"
-              >
-                <span className="material-symbols-outlined text-lg">save</span>
-                Registrar Producto
-              </button>
-            </>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={4000} 
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
-          severity={snackbar.severity} 
-          variant="filled"
-          sx={{ width: '100%', borderRadius: '20px', fontWeight: 900, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.1em' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+        warehouses={warehousesList}
+        onSaveSuccess={fetchAllData}
+        editItem={editingItem}
+      />
     </div>
   );
 };

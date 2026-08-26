@@ -22,7 +22,7 @@ export interface UsuarioAccesibilidadAlmacen {
 
 export const useAccesibilidadAlmacenUsuario = () => {
   // 1. GET /v1/almacen/activos - Listar almacenes activos
-  const getAlmacenesActivos = async (): Promise<AlmacenItem[]> => {
+  const loadApiGetAlmacenesActivos = async (): Promise<AlmacenItem[]> => {
     try {
       const res = await api.get('/v1/almacen/activos');
       if (res.data && Array.isArray(res.data)) {
@@ -40,7 +40,7 @@ export const useAccesibilidadAlmacenUsuario = () => {
   };
 
   // 2. GET /v1/seguridad/accesibilidad-almacen - Listar accesibilidad por usuario
-  const getAccesibilidadAlmacenes = async (): Promise<UsuarioAccesibilidadAlmacen[]> => {
+  const loadApiGetAccesibilidadAlmacenes = async (): Promise<UsuarioAccesibilidadAlmacen[]> => {
     try {
       const res = await api.get('/v1/seguridad/accesibilidad-almacen');
       if (res.data && Array.isArray(res.data.usuarios)) {
@@ -58,7 +58,7 @@ export const useAccesibilidadAlmacenUsuario = () => {
   };
 
   // 3. POST /v1/seguridad/acceso-almacen - Asignar o revocar permiso de almacén a usuario
-  const setAccesoAlmacen = async (idAlmacen: number, idUsuario: number, estado: number) => {
+  const loadApiSetAccesoAlmacen = async (idAlmacen: number, idUsuario: number, estado: number) => {
     try {
       const res = await api.post('/v1/seguridad/acceso-almacen', {
         id_almacen: idAlmacen,
@@ -74,8 +74,8 @@ export const useAccesibilidadAlmacenUsuario = () => {
   };
 
   return {
-    getAlmacenesActivos,
-    getAccesibilidadAlmacenes,
-    setAccesoAlmacen,
+    loadApiGetAlmacenesActivos,
+    loadApiGetAccesibilidadAlmacenes,
+    loadApiSetAccesoAlmacen,
   };
 };

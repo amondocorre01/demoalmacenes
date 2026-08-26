@@ -1,24 +1,43 @@
+/**
+ * CrearReceta.tsx
+ * 
+ * 1. Propósito de la Vista:
+ *    Definición y configuración de recetas de producción para productos asignados por almacén.
+ * 
+ * 2. APIs Utilizadas:
+ *    - GET /v1/almacen-receta/usuarios/almacenes (Listar almacenes asignados al usuario)
+ *    - GET /v1/almacen-receta/almacenes/:id/recetas (Verificar productos/recetas asignados a ese almacén)
+ *    - GET /v1/almacen-receta/productos-categoria-2 (Obtener productos catálogo categoría 2)
+ *    - GET /v1/almacen-receta/productos-receta?codigo_tipo=X (Listar insumos / materias primas)
+ *    - GET /v1/almacen-receta/productos-intermedios-activos (Listar productos intermedios)
+ *    - GET /v1/almacen-receta/recetas?id_sub_2=X (Obtener detalle de receta existente)
+ *    - POST /v1/almacen-receta/recetas (Guardar / actualizar componentes de la receta)
+ * 
+ * 3. Controles Clave:
+ *    - Verificación estricta de asignación de productos al almacén seleccionado usando loadApiGetRecetaByAlmacen.
+ *    - Alertas de confirmación cuando el usuario selecciona productos no relacionados.
+ *    - Modal de vinculación (LinkingModal) en components/ para relacionar productos a almacenes.
+ *    - Ocultamiento de botón de búsqueda para productos no relacionados.
+ *    - Cumplimiento estricto de diseño y tokens claro/oscuro de AGENTS.md.
+ */
+
 import React, { useState, useEffect } from 'react';
 import {
   Autocomplete,
   TextField,
   ToggleButtonGroup,
   ToggleButton,
-  IconButton,
   Tooltip,
   useTheme,
   useMediaQuery,
   Snackbar,
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
+  Alert
 } from '@mui/material';
 import { showAlert } from '../../../config/alerts';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
 import { useNewRecetaAlmacenesServices } from './services/useCrearReceta';
+import { LinkingModal } from './components/LinkingModal';
 
 const StepBadge: React.FC<{ num: string; label: string }> = ({ num, label }) => (
   <div className="flex items-center gap-3 mb-4">
@@ -39,6 +58,7 @@ const CrearReceta: React.FC = () => {
     loadApiGetProductosForReceta,
     loadApiGetRecetas,
     loadApiGetProductosIntermediosActivos,
+    loadApiGetRecetaByAlmacen,
     loadApiSaveReceta
   } = useNewRecetaAlmacenesServices();
 
@@ -50,6 +70,7 @@ const CrearReceta: React.FC = () => {
 
   // Selection States
   const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
+  const [assignedWarehouseProducts, setAssignedWarehouseProducts] = useState<any[]>([]);
   const [targetProduct, setTargetProduct] = useState<any>(null);
 
   // Linker Modal State
@@ -116,44 +137,112 @@ const CrearReceta: React.FC = () => {
     loadInitialData();
   }, []);
 
-  // Fetch Recipe when Target Product changes
+  // Fetch Assigned Products for Selected Warehouse using loadApiGetRecetaByAlmacen
   useEffect(() => {
-    if (targetProduct) {
-      const fetchRecipe = async () => {
-        setIsLoading(true);
-        const res = await loadApiGetRecetas(targetProduct.ID_SUB_CATEGORIA_2);
-        if (res && res.success && res.data && res.data.length > 0) {
-          const mapped = res.data.map((item: any) => ({
-            id: item.ID_PRODUCTO || item.ID_PRODUCTO_INTERMEDIO,
-            name: item.PRODUCTO || item.PRODUCTO_INTERMEDIO,
-            unit: item.UNIDAD_MEDIDA || 'U',
-            type: item.ID_PRODUCTO ? 'insumo' : 'intermedio',
-            icon: item.ID_PRODUCTO ? 'bakery_dining' : 'water_drop',
-            qty: item.CANTIDAD,
-            tempId: item.ID_PLANTA_PRODUCTO_RECETA || Math.random(),
-            id_unidad_medida: item.ID_UNIDAD_MEDIDA || 1,
-            id_producto: item.ID_PRODUCTO,
-            id_producto_intermedio: item.ID_PRODUCTO_INTERMEDIO
-          }));
-          setRecipeItems(mapped);
-          setHasExistingRecipe(true);
+    if (!selectedWarehouse) {
+      setAssignedWarehouseProducts([]);
+      setTargetProduct(null);
+      return;
+    }
 
-          const keys = res.data.map((item: any) => `${item.ID_PRODUCTO || 0}-${item.ID_PRODUCTO_INTERMEDIO || 0}`);
-          setInitialIngredientKeys(keys);
-        } else {
-          setRecipeItems([]);
-          setHasExistingRecipe(false);
-          setInitialIngredientKeys([]);
-        }
-        setIsLoading(false);
-      };
-      fetchRecipe();
+    const fetchAssignedWarehouseProducts = async () => {
+      setIsLoading(true);
+      const res = await loadApiGetRecetaByAlmacen(selectedWarehouse.ID_PLANTA_ALMACEN);
+      if (res && res.success && Array.isArray(res.data)) {
+        setAssignedWarehouseProducts(res.data);
+      } else if (Array.isArray(res)) {
+        setAssignedWarehouseProducts(res);
+      } else {
+        setAssignedWarehouseProducts([]);
+      }
+      setIsLoading(false);
+    };
+
+    fetchAssignedWarehouseProducts();
+    setTargetProduct(null);
+  }, [selectedWarehouse]);
+
+  // Verificar si un producto está asignado/relacionado con el almacén seleccionado
+  const isProductAssigned = (prod: any) => {
+    if (!selectedWarehouse || !prod) return false;
+    if (!assignedWarehouseProducts || assignedWarehouseProducts.length === 0) return false;
+
+    return assignedWarehouseProducts.some((ap: any) => {
+      const apSub2 = ap.ID_SUB_CATEGORIA_2 || ap.id_sub_categoria_2;
+      const prodSub2 = prod.ID_SUB_CATEGORIA_2 || prod.id_sub_categoria_2;
+      if (apSub2 && prodSub2 && Number(apSub2) === Number(prodSub2)) return true;
+
+      const apName = (ap.PRODUCTO || ap.DESCRIPCION || ap.NOMBRE || '').trim().toUpperCase();
+      const prodName = (prod.PRODUCTO || prod.DESCRIPCION || prod.name || '').trim().toUpperCase();
+      if (apName && prodName && apName === prodName) return true;
+
+      return false;
+    });
+  };
+
+  // Manejador al seleccionar un producto en "Producto a Definir"
+  const handleTargetProductChange = async (v: any) => {
+    // Borrar inmediatamente los datos de receta anteriormente visualizados
+    setRecipeItems([]);
+    setHasExistingRecipe(false);
+    setInitialIngredientKeys([]);
+
+    if (!v) {
+      setTargetProduct(null);
+      return;
+    }
+
+    const assigned = isProductAssigned(v);
+    if (!assigned) {
+      setTargetProduct(null);
+      // Alerta de confirmación informando al usuario sobre la falta de relación
+      const confirmLink = await showAlert.confirm(
+        'Producto No Relacionado al Almacén',
+        `El producto "${v.PRODUCTO || v.name}" NO está asignado al almacén "${selectedWarehouse?.DESCRICION}". ¿Desea relacionar este producto a este almacén para realizar la receta?`
+      );
+
+      if (confirmLink) {
+        setSelectedGlobalProduct(v);
+        setIsLinkingModalOpen(true);
+      }
+      return;
+    }
+
+    setTargetProduct(v);
+  };
+
+  // Buscar / Cargar la Receta del producto asignado al presionar el botón de Lupa
+  const handleSearchRecipe = async () => {
+    if (!targetProduct || !isProductAssigned(targetProduct)) return;
+
+    setIsLoading(true);
+    const res = await loadApiGetRecetas(targetProduct.ID_SUB_CATEGORIA_2);
+    if (res && res.success && res.data && res.data.length > 0) {
+      const mapped = res.data.map((item: any) => ({
+        id: item.ID_PRODUCTO || item.ID_PRODUCTO_INTERMEDIO,
+        name: item.PRODUCTO || item.PRODUCTO_INTERMEDIO,
+        unit: item.UNIDAD_MEDIDA || 'U',
+        type: item.ID_PRODUCTO ? 'insumo' : 'intermedio',
+        icon: item.ID_PRODUCTO ? 'bakery_dining' : 'water_drop',
+        qty: item.CANTIDAD,
+        tempId: item.ID_PLANTA_PRODUCTO_RECETA || Math.random(),
+        id_unidad_medida: item.ID_UNIDAD_MEDIDA || 1,
+        id_producto: item.ID_PRODUCTO,
+        id_producto_intermedio: item.ID_PRODUCTO_INTERMEDIO
+      }));
+      setRecipeItems(mapped);
+      setHasExistingRecipe(true);
+
+      const keys = res.data.map((item: any) => `${item.ID_PRODUCTO || 0}-${item.ID_PRODUCTO_INTERMEDIO || 0}`);
+      setInitialIngredientKeys(keys);
     } else {
       setRecipeItems([]);
       setHasExistingRecipe(false);
       setInitialIngredientKeys([]);
+      showAlert.toast('No se encontró una receta registrada para este producto. Puede crear una nueva receta.');
     }
-  }, [targetProduct]);
+    setIsLoading(false);
+  };
 
   const filteredIngredients = ingType === 'insumo' ? insumosList : intermediosList;
 
@@ -191,12 +280,19 @@ const CrearReceta: React.FC = () => {
     setRecipeItems(recipeItems.filter(item => item.tempId !== tempId));
   };
 
-  const handleLinkProduct = () => {
-    if (!selectedGlobalProduct) return;
+  const handleLinkProduct = async () => {
+    if (!selectedGlobalProduct || !selectedWarehouse) return;
+
+    // Vincular y actualizar estado de productos asignados al almacén
+    setAssignedWarehouseProducts(prev => [...prev, selectedGlobalProduct]);
     setTargetProduct(selectedGlobalProduct);
     setIsLinkingModalOpen(false);
     setSelectedGlobalProduct(null);
-    setSnackbar({ open: true, message: 'Producto seleccionado correctamente', severity: 'success' });
+
+    showAlert.success(
+      'Producto Relacionado',
+      `El producto "${selectedGlobalProduct.PRODUCTO}" se ha vinculado correctamente con el almacén "${selectedWarehouse.DESCRICION}".`
+    );
   };
 
   const handleSaveRecipe = async () => {
@@ -215,7 +311,6 @@ const CrearReceta: React.FC = () => {
       estado: 1
     }));
 
-    // Find deleted ones
     const deletedProducts = initialIngredientKeys
       .filter(key => !recipeItems.some(item => `${item.id_producto || 0}-${item.id_producto_intermedio || 0}` === key))
       .map(key => {
@@ -297,7 +392,7 @@ const CrearReceta: React.FC = () => {
 
   return (
     <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-2 px-4 md:px-0 text-on-surface">
-      <LoadingOverlay show={isLoading} message="Procesando..." />
+      <LoadingOverlay show={isLoading} message="Procesando datos de receta..." />
 
       {/* Header Section */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-1 pb-1">
@@ -326,45 +421,94 @@ const CrearReceta: React.FC = () => {
                   options={almacenes}
                   getOptionLabel={(o: any) => o.DESCRICION || ''}
                   value={selectedWarehouse}
-                  onChange={(_, v) => { setSelectedWarehouse(v); setTargetProduct(null); }}
+                  onChange={(_, v) => { setSelectedWarehouse(v); }}
                   isOptionEqualToValue={(option, value) => option.ID_PLANTA_ALMACEN === value?.ID_PLANTA_ALMACEN}
                   sx={selectSx}
                   renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Seleccionar almacén..." />}
                 />
               </div>
+
               <div className={`space-y-2 transition-all ${!selectedWarehouse ? 'opacity-30 pointer-events-none' : ''} flex-1`}>
                 <div className="flex justify-between items-center ml-1">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Producto a Definir</label>
-                  {targetProduct && (
+                  {targetProduct && isProductAssigned(targetProduct) && (
                     <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md animate-in fade-in zoom-in duration-300 ${hasExistingRecipe ? 'bg-amber-500/20 text-amber-600 dark:text-amber-450' : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-450'}`}>
                       {hasExistingRecipe ? '📝 Receta Existente' : '✨ Nueva Receta'}
                     </span>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <Autocomplete
-                    options={productsCategoria2}
-                    getOptionLabel={(o: any) => o.PRODUCTO || ''}
-                    value={targetProduct}
-                    fullWidth
-                    onChange={(_, v) => setTargetProduct(v)}
-                    isOptionEqualToValue={(option, value) => option.ID_SUB_CATEGORIA_2 === value?.ID_SUB_CATEGORIA_2}
-                    sx={selectSx}
-                    renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto..." />}
-                  />
-                  <Tooltip title="Vincular nuevo producto a este almacén">
-                    <button
-                      type="button"
-                      onClick={() => setIsLinkingModalOpen(true)}
-                      className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner hover:bg-primary/20 transition-all cursor-pointer shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-2xl font-bold">link</span>
-                    </button>
-                  </Tooltip>
+
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1">
+                    <Autocomplete
+                      options={productsCategoria2}
+                      getOptionLabel={(o: any) => {
+                        if (!o) return '';
+                        const assigned = isProductAssigned(o);
+                        return assigned ? (o.PRODUCTO || '') : `${o.PRODUCTO || ''} (⚠️ NO RELACIONADO AL ALMACÉN)`;
+                      }}
+                      value={targetProduct}
+                      fullWidth
+                      onChange={(_, v) => handleTargetProductChange(v)}
+                      isOptionEqualToValue={(option, value) => option.ID_SUB_CATEGORIA_2 === value?.ID_SUB_CATEGORIA_2}
+                      sx={selectSx}
+                      renderOption={(props, option) => {
+                        const assigned = isProductAssigned(option);
+                        return (
+                          <li
+                            {...props}
+                            key={option.ID_SUB_CATEGORIA_2}
+                            className="flex justify-between items-center py-2 px-3 hover:bg-surface-variant cursor-pointer text-xs font-bold uppercase border-b border-outline-variant/20"
+                          >
+                            <span className={assigned ? 'text-on-surface font-black' : 'text-rose-500 font-black'}>
+                              {option.PRODUCTO}
+                            </span>
+                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${assigned
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                              }`}>
+                              {assigned ? '● Asignado' : '⚠️ No Relacionado'}
+                            </span>
+                          </li>
+                        );
+                      }}
+                      renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto..." />}
+                    />
+                  </div>
+
+                  {/* Si el producto está asignado → Muestra Botón de Búsqueda de Receta con icono de Lupa */}
+                  {targetProduct && isProductAssigned(targetProduct) && (
+                    <Tooltip title="Buscar Receta del Producto">
+                      <button
+                        type="button"
+                        onClick={handleSearchRecipe}
+                        className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0"
+                      >
+                        <span className="material-symbols-outlined text-2xl font-bold">search</span>
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {/* Si NO hay producto asignado seleccionado → Muestra Botón de Vinculación / Relación */}
+                  {(!targetProduct || !isProductAssigned(targetProduct)) && (
+                    <Tooltip title="Relacionar producto a este almacén">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedGlobalProduct(targetProduct || null);
+                          setIsLinkingModalOpen(true);
+                        }}
+                        className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0"
+                      >
+                        <span className="material-symbols-outlined text-2xl font-bold">link</span>
+                      </button>
+                    </Tooltip>
+                  )}
                 </div>
+
                 {!targetProduct && selectedWarehouse && (
                   <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-tighter mt-1 ml-1 animate-pulse">
-                    ¿No encuentras el producto? Haz clic en el icono de enlace para vincularlo.
+                    Seleccione un producto asignado (●) o presione el botón de enlace para relacionar un producto al almacén.
                   </p>
                 )}
               </div>
@@ -581,45 +725,17 @@ const CrearReceta: React.FC = () => {
         </div>
       </div>
 
-      {/* Linking Modal */}
-      <Dialog
+      {/* Modal de Vinculación en components/LinkingModal.tsx */}
+      <LinkingModal
         open={isLinkingModalOpen}
         onClose={() => setIsLinkingModalOpen(false)}
-        slotProps={{ paper: { sx: { borderRadius: '2rem', p: 2, bgcolor: 'var(--background)', color: 'var(--on-background)' } } }}
-      >
-        <DialogTitle className="font-black text-on-background uppercase tracking-tight text-lg">Vincular Producto</DialogTitle>
-        <DialogContent className="space-y-4 pt-2">
-          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider leading-relaxed">
-            Seleccione un producto del catálogo maestro para habilitarlo en el almacén <span className="text-primary font-black">"{selectedWarehouse?.DESCRICION || ''}"</span>.
-          </p>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <label className="block text-[9px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Producto Maestro</label>
-              <Autocomplete
-                options={productsCategoria2}
-                getOptionLabel={(o: any) => o.PRODUCTO || ''}
-                value={selectedGlobalProduct}
-                onChange={(_, v) => setSelectedGlobalProduct(v)}
-                isOptionEqualToValue={(option, value) => option.ID_SUB_CATEGORIA_2 === value?.ID_SUB_CATEGORIA_2}
-                sx={selectSx}
-                renderInput={(params) => <TextField {...params} variant="outlined" size="small" placeholder="Buscar producto global..." />}
-              />
-            </div>
-          </div>
-        </DialogContent>
-        <DialogActions className="p-6 pt-0 gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setIsLinkingModalOpen(false)} className="!text-on-surface-variant">Cancelar</Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleLinkProduct}
-            disabled={!selectedGlobalProduct}
-            className="!px-6"
-          >
-            Vincular y Continuar
-          </Button>
-        </DialogActions>
-      </Dialog>
+        selectedWarehouse={selectedWarehouse}
+        productsCategoria2={productsCategoria2}
+        selectedGlobalProduct={selectedGlobalProduct}
+        setSelectedGlobalProduct={setSelectedGlobalProduct}
+        handleLinkProduct={handleLinkProduct}
+        selectSx={selectSx}
+      />
 
       {/* Global Alerts */}
       <Snackbar
