@@ -1,197 +1,542 @@
-import { Autocomplete, TextField, IconButton, Box as MuiBox, createTheme, ThemeProvider, Tooltip, Zoom } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers';
-import dayjs, { Dayjs } from 'dayjs';
-import React, { useState, useMemo } from 'react';
-import { MaterialReactTable, useMaterialReactTable, type MRT_ColumnDef } from 'material-react-table';
-import { Button } from '../../../components/common/Button';
+/**
+ * RetirarInsumos.tsx
+ * ─────────────────────────────────────────────────────────────
+ * 1. Propósito de la vista:
+ *    Gestión, auditoría y control de salidas y retiros manuales directos de stock en almacén.
+ *    Permite a los supervisores registrar mermas, descartes o salidas operativas de productos
+ *    e insumos con validación de stock disponible en tiempo real, así como auditar el
+ *    historial de retiros filtrado por almacén y rango de fechas.
+ *
+ * 2. APIs Utilizadas:
+ *    - GET /inventario/declaracion/almacenes?id_planta_almacen=0 (loadApiGetAlmacenes - Almacenes del usuario)
+ *    - GET /inventario/ajustes/stock?id_planta_almacen=X (loadApiGetStockAlmacen - Stock disponible para validar retiros)
+ *    - GET /inventario/ajustes/descontados?id_planta_almacen=X&fecha_inicio=Y&fecha_fin=Z (loadApiGetProductosDescontados - Historial de retiros)
+ *    - POST /inventario/ajustes/descontar (loadApiDescontarStock - Registrar retiro de stock y desperdicio)
+ *
+ * 3. Controles Clave:
+ *    - Filtro por almacén mediante Autocomplete de MUI con estilos oficiales de AGENTS.md.
+ *    - Filtro por rango de fechas (Fecha Inicio y Fecha Fin) con DatePicker en español.
+ *    - Botón de búsqueda estandarizado con icono search.
+ *    - Modal estructurado en components/ (ModalNuevoRetiroInsumos) con validación estricta de stock disponible.
+ *    - Tabla unificada compacta y responsiva con buscador interno tipo píldora.
+ *    - Componente LoadingOverlay centralizado para estados de carga.
+ */
 
-const RetirarInsumos: React.FC = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
+import React, { useState, useEffect, useMemo } from 'react';
+import { Autocomplete, TextField } from '@mui/material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs, { Dayjs } from 'dayjs';
+import { Button } from '../../../components/common/Button';
+import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { showAlert } from '../../../config/alerts';
+import {
+  useRetirarInsumosServices,
+  AlmacenItem,
+  HistorialRetiroItem,
+} from './services/useRetirarInsumos';
+import { ModalNuevoRetiroInsumos } from './components/ModalNuevoRetiroInsumos';
+
+export const RetirarInsumos: React.FC = () => {
+  const {
+    loadApiGetAlmacenes,
+    loadApiGetProductosDescontados,
+  } = useRetirarInsumosServices();
+
+  // Estados de datos
+  const [warehouses, setWarehouses] = useState<AlmacenItem[]>([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<AlmacenItem | null>(null);
   const [startDate, setStartDate] = useState<Dayjs | null>(dayjs().startOf('month'));
   const [endDate, setEndDate] = useState<Dayjs | null>(dayjs());
+  const [historialList, setHistorialList] = useState<HistorialRetiroItem[]>([]);
 
-  const warehouses = [
-    { id: 1, name: 'ALMACÉN CENTRAL' },
-    { id: 2, name: 'ALMACÉN REPOSTERÍA' },
-    { id: 3, name: 'ALMACÉN PANADERÍA' }
-  ];
+  // Estados de carga
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const stats = [
-    { label: 'Retiros de Hoy', value: '08', trend: '-5%', icon: 'logout', color: 'bg-amber-500' },
-    { label: 'Volumen Total Retirado', value: '2,000.00', trend: '+12%', icon: 'inventory', color: 'bg-primary' },
-  ];
+  // Filtros de tabla y paginación
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  const history = useMemo(() => [
-    { product: 'ACEITE', detail: 'ACEITE DE 20 LT', qty: 1000.00, unit: 'Mililitro', expiry: '2025-10-01', user: 'HELEN V SIÑANI VERA', icon: 'opacity' },
-    { product: 'ACEITE', detail: 'ACEITE DE 20 LT', qty: 1000.00, unit: 'Mililitro', expiry: '2025-10-01', user: 'Omar Trujillo Montan', icon: 'opacity' },
-  ], []);
+  // Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const columns = useMemo<MRT_ColumnDef<any>[]>(
-    () => [
-      {
-        accessorKey: 'product',
-        header: 'Insumo / Producto',
-        size: 200,
-        Cell: ({ row }) => (
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-zinc-50 flex items-center justify-center text-zinc-400">
-              <span className="material-symbols-outlined text-xl">{row.original.icon}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[11px] font-black text-zinc-900 uppercase leading-none">{row.original.product}</span>
-              <span className="text-[8px] font-bold text-zinc-400 mt-1 uppercase truncate max-w-[180px]">{row.original.detail}</span>
-            </div>
-          </div>
-        )
-      },
-      {
-        accessorKey: 'qty',
-        header: 'Cant. Retirada',
-        size: 120,
-        Cell: ({ cell, row }) => (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-rose-600">-{cell.getValue<number>().toFixed(2)}</span>
-            <span className="text-[8px] font-black text-zinc-400 uppercase bg-zinc-100 px-1.5 py-0.5 rounded">{row.original.unit}</span>
-          </div>
-        )
-      },
-      {
-        accessorKey: 'expiry',
-        header: 'Vencimiento',
-        Cell: ({ cell }) => (
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-sm text-zinc-300">event</span>
-            <span className="text-[10px] font-black tracking-widest text-zinc-500">{cell.getValue<string>()}</span>
-          </div>
-        )
-      },
-      {
-        accessorKey: 'user',
-        header: 'Retirado por',
-        Cell: ({ cell }) => (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center text-[8px] font-black text-zinc-500">
-              {cell.getValue<string>().substring(0, 2).toUpperCase()}
-            </div>
-            <span className="text-[10px] font-bold text-zinc-500 uppercase">{cell.getValue<string>()}</span>
-          </div>
-        )
+  // Carga inicial
+  useEffect(() => {
+    const fetchAlmacenes = async () => {
+      setIsLoading(true);
+      const res = await loadApiGetAlmacenes();
+      let loadedWh: AlmacenItem[] = [];
+      if (res && res.success && Array.isArray(res.datos)) {
+        loadedWh = res.datos;
+      } else if (Array.isArray(res)) {
+        loadedWh = res;
       }
-    ],
-    [],
-  );
+      setWarehouses(loadedWh);
 
-  const tableTheme = useMemo(
-    () =>
-      createTheme({
-        palette: { primary: { main: '#9d0013' }, background: { default: '#fff' } },
-        typography: { fontFamily: 'inherit' },
-        components: {
-          MuiTableCell: {
-            styleOverrides: {
-              root: { padding: '14px 16px', borderBottom: '1px solid #f4f4f5' },
-              head: { backgroundColor: '#fafafa', fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#71717a' }
-            }
-          }
-        }
-      }),
-    [],
-  );
+      if (loadedWh.length > 0) {
+        const firstWh = loadedWh[0];
+        setSelectedWarehouse(firstWh);
+        fetchHistorialData(firstWh, startDate, endDate);
+      } else {
+        setIsLoading(false);
+      }
+    };
+    fetchAlmacenes();
+  }, []);
+
+  // Consultar historial de retiros
+  const fetchHistorialData = async (
+    warehouse: AlmacenItem | null,
+    start: Dayjs | null,
+    end: Dayjs | null
+  ) => {
+    if (!warehouse) {
+      showAlert.warning('Seleccione un Almacén', 'Debe seleccionar un almacén para consultar los retiros.');
+      return;
+    }
+    const fi = start ? start.format('YYYY-MM-DD') : dayjs().startOf('month').format('YYYY-MM-DD');
+    const ff = end ? end.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
+
+    setIsLoading(true);
+    const res = await loadApiGetProductosDescontados(warehouse.ID_PLANTA_ALMACEN, fi, ff);
+    setIsLoading(false);
+
+    if (res && res.success && Array.isArray(res.data)) {
+      setHistorialList(res.data);
+      setPage(1);
+    } else if (Array.isArray(res)) {
+      setHistorialList(res);
+      setPage(1);
+    } else {
+      setHistorialList([]);
+    }
+  };
+
+  // Filtrado interno en tabla
+  const filteredItems = useMemo(() => {
+    if (!searchTerm.trim()) return historialList;
+    const term = searchTerm.toLowerCase();
+    return historialList.filter((item) => {
+      const prod = (item.PRODUCTO || '').toLowerCase();
+      const det = (item.PRODUCTO_DETALLE || '').toLowerCase();
+      const motivo = (item.DETALLE || '').toLowerCase();
+      const user = (item.USUARIO_REGISTRA || '').toLowerCase();
+      return prod.includes(term) || det.includes(term) || motivo.includes(term) || user.includes(term);
+    });
+  }, [historialList, searchTerm]);
+
+  // Paginación
+  const totalItems = filteredItems.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, page, pageSize]);
+
+  // Estadísticas KPI
+  const stats = useMemo(() => {
+    const totalQty = historialList.reduce((acc, curr) => acc + (Number(curr.CANTIDAD) || 0), 0);
+    return [
+      {
+        label: 'Total Registros de Retiro',
+        value: historialList.length.toString(),
+        icon: 'format_list_bulleted',
+        color: 'bg-primary',
+      },
+      {
+        label: 'Volumen Total Retirado',
+        value: totalQty.toFixed(2),
+        icon: 'logout',
+        color: 'bg-rose-600',
+      },
+    ];
+  }, [historialList]);
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const clean = dateStr.split('T')[0];
+    const [y, m, d] = clean.split('-');
+    return `${d}/${m}/${y}`;
+  };
 
   return (
-    <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-12">
-      {/* Header & Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8 -mt-4 px-4">
-        <div className="lg:col-span-5">
-          <p className="text-3xl font-black text-zinc-900 tracking-tight uppercase leading-none">Retiro de Insumos</p>
-          <p className="text-zinc-500 font-medium mt-3 text-sm italic uppercase tracking-wider">Gestión de salidas directas de inventario y ajustes de stock.</p>
-          
-          <div className="flex gap-3 mt-8">
-            <Button
-              onClick={() => setIsModalOpen(true)}
-              className="!rounded-2xl h-12 !px-8 shadow-xl shadow-primary/20"
-              icon="remove_circle"
-            >
-              Nuevo Retiro
-            </Button>
+    <div className="max-w-[1600px] mx-auto w-full space-y-6">
+      {/* Componente Centralizado LoadingOverlay */}
+      <LoadingOverlay show={isLoading} message="Consultando retiros de stock..." />
+
+      {/* Cabecera Estándar de Página (AGENTS.md Layout) */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-bold uppercase tracking-tight text-on-surface font-headline">
+                Retiro de Insumos
+              </h1>
+            </div>
           </div>
+          <p className="text-[10px] font-black text-on-surface-variant mt-0 font-body">
+            Gestión y registro de salidas manuales directas y mermas de insumos en el almacén.
+          </p>
         </div>
 
-        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {stats.map((stat, i) => (
-            <div key={i} className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-sm flex flex-col justify-between group hover:border-amber-500/20 transition-all cursor-default">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`w-10 h-10 rounded-xl ${stat.color} text-white flex items-center justify-center shadow-lg shadow-black/5`}>
-                  <span className="material-symbols-outlined text-xl">{stat.icon}</span>
-                </div>
-                <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">{stat.trend}</span>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-zinc-900 leading-none">{stat.value}</p>
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">{stat.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* Botón de Acción Principal en Cabecera */}
+        <Button
+          variant="primary"
+          size="md"
+          icon="remove_circle_outline"
+          onClick={() => {
+            /*if (warehouses.length === 0) {
+              showAlert.warning('Sin Almacenes', 'No se encontraron almacenes configurados para registrar retiros.');
+              return;
+            }*/
+            setIsModalOpen(true);
+          }}
+          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+        >
+          Nuevo Retiro
+        </Button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="px-4">
-        <div className="bg-white p-4 rounded-[1.5rem] border border-zinc-200 shadow-sm mb-6 flex flex-col md:flex-row items-center gap-4">
-          <div className="flex-1 w-full">
+      {/* Tarjetas KPI de Resumen */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {stats.map((stat, i) => (
+          <div
+            key={i}
+            className="bg-surface dark:bg-zinc-900 p-4 sm:p-5 rounded-3xl border border-outline-variant/60 dark:border-zinc-800 shadow-sm flex items-center gap-4"
+          >
+            <div className={`w-12 h-12 rounded-2xl ${stat.color} text-white flex items-center justify-center shadow-md shrink-0`}>
+              <span className="material-symbols-outlined text-2xl">{stat.icon}</span>
+            </div>
+            <div>
+              <p className="text-2xl font-black text-on-surface tracking-tight font-headline">
+                {stat.value}
+              </p>
+              <p className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest mt-0.5">
+                {stat.label}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Barra Superior de Filtros (Estándar Oficial AGENTS.md) */}
+      <div className="bg-surface dark:bg-zinc-900 rounded-3xl p-5 border border-outline-variant/60 dark:border-zinc-800 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row items-end gap-4">
+          {/* Selector de Almacén */}
+          <div className="w-full sm:flex-1 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Seleccionar Almacén
+            </label>
             <Autocomplete
-              value={selectedWarehouse}
-              onChange={(_, nv) => setSelectedWarehouse(nv)}
               options={warehouses}
-              getOptionLabel={(o: any) => o.name}
+              getOptionLabel={(option) => option.DESCRICION || option.nombre || option.NOMBRE || ''}
+              value={selectedWarehouse}
+              onChange={(_, newValue) => {
+                setSelectedWarehouse(newValue);
+                setHistorialList([]);
+                if (newValue) {
+                  fetchHistorialData(newValue, startDate, endDate);
+                }
+              }}
+              isOptionEqualToValue={(option, value) =>
+                option.ID_PLANTA_ALMACEN === value?.ID_PLANTA_ALMACEN
+              }
+              fullWidth
+              noOptionsText="No hay almacenes disponibles"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '15px',
+                  backgroundColor: 'var(--input-bg, var(--surface))',
+                  color: 'var(--on-surface)',
+                  padding: '3px 8px',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--outline-variant)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--outline)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--primary)',
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: 'var(--on-surface-variant)',
+                  },
+                },
+              }}
               renderInput={(params) => (
-                <TextField {...params} placeholder="Filtrar por Almacén..." variant="standard" InputProps={{ ...params.InputProps, disableUnderline: true }}
-                  sx={{ bgcolor: 'zinc.50', px: 3, py: 1, borderRadius: '16px', '& .MuiInputBase-input': { fontSize: '0.85rem', fontWeight: '800', textTransform: 'uppercase' } }}
+                <TextField
+                  {...params}
+                  variant="outlined"
+                  size="small"
+                  placeholder="SELECCIONAR ALMACÉN..."
                 />
               )}
             />
           </div>
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="flex gap-2 bg-zinc-50 p-1.5 rounded-2xl border border-zinc-100">
-              <DatePicker value={startDate} onChange={setStartDate} slotProps={{ textField: { size: 'small', variant: 'standard', InputProps: { disableUnderline: true }, sx: { width: '130px', px: 2, '& .MuiInputBase-input': { fontSize: '11px', fontWeight: '900' } } } }} />
-              <div className="w-px h-6 bg-zinc-200 self-center"></div>
-              <DatePicker value={endDate} onChange={setEndDate} slotProps={{ textField: { size: 'small', variant: 'standard', InputProps: { disableUnderline: true }, sx: { width: '130px', px: 2, '& .MuiInputBase-input': { fontSize: '11px', fontWeight: '900' } } } }} />
-            </div>
-            <button className="w-11 h-11 rounded-2xl bg-zinc-900 text-white flex items-center justify-center hover:bg-amber-600 transition-all shadow-lg">
-              <span className="material-symbols-outlined text-xl">search</span>
-            </button>
+
+          {/* Fecha Inicio */}
+          <div className="w-full sm:w-48 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Fecha Inicio
+            </label>
+            <DatePicker
+              value={startDate}
+              onChange={(v) => {
+                setStartDate(v);
+                setHistorialList([]);
+              }}
+              format="DD/MM/YYYY"
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: {
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      },
+                    },
+                  },
+                },
+              }}
+            />
           </div>
+
+          {/* Fecha Fin */}
+          <div className="w-full sm:w-48 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Fecha Fin
+            </label>
+            <DatePicker
+              value={endDate}
+              onChange={(v) => {
+                setEndDate(v);
+                setHistorialList([]);
+              }}
+              format="DD/MM/YYYY"
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: {
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      },
+                    },
+                  },
+                },
+              }}
+            />
+          </div>
+
+          {/* Botón de Búsqueda Estandarizado */}
+          <button
+            type="button"
+            onClick={() => fetchHistorialData(selectedWarehouse, startDate, endDate)}
+            title="Buscar Retiros"
+            className="w-10 h-10 rounded-2xl bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0 shadow-inner"
+          >
+            <span className="material-symbols-outlined text-2xl font-bold">search</span>
+          </button>
         </div>
       </div>
 
-      {/* Table Section */}
-      <div className="px-4">
-        <div className="bg-white rounded-[2rem] border border-zinc-200 shadow-sm overflow-hidden">
-          <div className="p-2">
-            <ThemeProvider theme={tableTheme}>
-              <MRTTableContainer history={history} columns={columns} />
-            </ThemeProvider>
+      {/* Main Data Canvas / Diseño de Tablas Unificado (AGENTS.md) */}
+      <div className="bg-white dark:bg-zinc-900 rounded-[1rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+        {/* Cabecera Superior de Tabla con Buscador tipo Píldora */}
+        <div className="p-3 sm:p-4 border-b border-zinc-100 dark:border-zinc-800/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-xl">logout</span>
+            <span className="text-xs font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200 font-headline">
+              Historial de Retiros de Insumos ({historialList.length} registros)
+            </span>
+          </div>
+
+          {/* Buscador de Tabla Interno Estandarizado */}
+          <div className="relative group w-full sm:w-48 sm:ml-2">
+            <input
+              type="text"
+              placeholder="BUSCAR..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2 px-4 pl-9 text-[10px] font-black text-zinc-900 dark:text-zinc-150 transition-all uppercase tracking-widest focus:ring-4 focus:ring-primary/10"
+            />
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm pointer-events-none">
+              search
+            </span>
           </div>
         </div>
+
+        {/* Tabla Compacta y Responsiva */}
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-zinc-50/50 dark:bg-zinc-850/50">
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                  N°
+                </td>
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  PRODUCTO / INSUMO
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  DETALLE PRODUCTO
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
+                  CANT. RETIRADA
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                  UNIDAD MEDIDA
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 min-w-[160px]">
+                  MOTIVO / DETALLE
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                  VENCIMIENTO
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  REGISTRADO POR
+                </td>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
+              {paginatedItems.map((item, idx) => {
+                const globalIdx = (page - 1) * pageSize + idx;
+
+                return (
+                  <tr
+                    key={`${item.ID_PRODUCTO}-${item.ID_PRODUCTO_DETALLE}-${item.ID_PRODUCTO_INTERMEDIO}-${idx}`}
+                    className="hover:bg-zinc-50/30 dark:hover:bg-zinc-850/30 transition-colors group"
+                  >
+                    <td className="pl-6 pr-2 py-1 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                      <span>{globalIdx + 1}</span>
+                    </td>
+                    <td className="pl-6 pr-2 py-1 font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                      {item.PRODUCTO || '-'}
+                    </td>
+                    <td className="px-4 py-1 text-xs text-zinc-600 dark:text-zinc-350 font-medium">
+                      {item.PRODUCTO_DETALLE || item.PRODUCTO || '-'}
+                    </td>
+                    <td className="px-4 py-1 text-right font-black text-xs text-rose-600 dark:text-rose-400 whitespace-nowrap">
+                      -{(Number(item.CANTIDAD) || 0).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-1 text-zinc-600 dark:text-zinc-400 uppercase text-[11px] font-medium whitespace-nowrap">
+                      {item.UNIDAD_MEDIDA || '-'}
+                    </td>
+                    <td className="px-4 py-1 text-zinc-500 dark:text-zinc-400 text-xs">
+                      {item.DETALLE || 'Retiro de stock'}
+                    </td>
+                    <td className="px-4 py-1 text-zinc-600 dark:text-zinc-400 text-xs whitespace-nowrap">
+                      {formatDate(item.FECHA_VENCIMIENTO)}
+                    </td>
+                    <td className="px-4 py-1 text-xs text-zinc-600 dark:text-zinc-400">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm text-zinc-400">person</span>
+                        <span>{item.USUARIO_REGISTRA || 'SISTEMA'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {!isLoading && paginatedItems.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-zinc-400 dark:text-zinc-500">
+                    <span className="material-symbols-outlined text-4xl mb-2 text-zinc-400">history_toggle_off</span>
+                    <p className="text-sm font-bold">No se encontraron registros de retiro en el rango seleccionado.</p>
+                    <p className="text-xs text-zinc-400 mt-1">Seleccione otro almacén o rango de fechas.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Table Footer / Pagination (Estándar Oficial AGENTS.md) */}
+        {!isLoading && totalItems > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 border-t border-zinc-100 dark:border-zinc-800/80">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                  Mostrar:
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-350 px-2.5 outline-none shadow-sm cursor-pointer"
+                >
+                  <option value={5}>5 filas</option>
+                  <option value={10}>10 filas</option>
+                  <option value={20}>20 filas</option>
+                  <option value={50}>50 filas</option>
+                  <option value={100}>100 filas</option>
+                </select>
+              </div>
+              <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                Mostrando {totalItems > 0 ? (page - 1) * pageSize + 1 : 0}-{Math.min(page * pageSize, totalItems)} de {totalItems} registros
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_left</span>
+              </button>
+              <span className="text-[10px] font-black uppercase text-zinc-550 dark:text-zinc-400 px-2">
+                Página {page} de {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                disabled={page === totalPages}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Modal Nuevo Retiro */}
+      <ModalNuevoRetiroInsumos
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        warehouses={warehouses}
+        initialWarehouse={selectedWarehouse}
+        onSuccess={() => {
+          if (selectedWarehouse) {
+            fetchHistorialData(selectedWarehouse, startDate, endDate);
+          }
+        }}
+      />
     </div>
   );
-};
-
-const MRTTableContainer: React.FC<{ history: any[], columns: any[] }> = ({ history, columns }) => {
-  const table = useMaterialReactTable({
-    columns,
-    data: history,
-    enableColumnActions: false,
-    enableColumnFilters: false,
-    enablePagination: true,
-    enableSorting: true,
-    enableTopToolbar: false,
-    muiTablePaperProps: { elevation: 0, sx: { borderRadius: '24px' } },
-    initialState: { density: 'compact', pagination: { pageSize: 10, pageIndex: 0 } }
-  });
-  return <MaterialReactTable table={table} />;
 };
 
 export default RetirarInsumos;

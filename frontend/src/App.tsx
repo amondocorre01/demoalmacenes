@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './pages/Dashboard';
-import { InventarioAlmacen } from './pages/InventarioAlmacen';
+import { InventarioAlmacen } from './pages/almacen/inventario-almacen/InventarioAlmacen';
 import MUITest from './pages/MUITest';
 
 
@@ -33,10 +33,6 @@ import RetirarInsumos from './pages/almacen/retirar-insumos/RetirarInsumos';
 import RecetasIntermedias from './pages/almacen/recetas-intermedias/RecetasIntermedias';
 import ConfigReposicion from './pages/almacen/config-reposicion/ConfigReposicion';
 import ConfigDeclaracion from './pages/almacen/config-declaracion/ConfigDeclaracion';
-import RegistroProducto from './pages/almacen/registro-producto/RegistroProducto';
-import GuiaRegistroProducto from './pages/almacen/registro-producto/GuiaRegistroProducto';
-import RegistroGrupoProducto from './pages/almacen/registro-grupo-producto/RegistroGrupoProducto';
-import RegistroFacturasInsumos from './pages/almacen/registro-facturas-insumos/RegistroFacturasInsumos';
 import RegistroProduccion from './pages/almacen/registro-produccion/RegistroProduccion';
 import AccesibilidadAlmacenUsuarios from './pages/almacen/accesibilidad-almacen/AccesibilidadAlmacenUsuarios';
 
@@ -73,6 +69,7 @@ const App: React.FC = () => {
           <Route path="/almacen/recetas-intermedias" element={<RecetasIntermedias />} />
           <Route path="/almacen/lista-recetas" element={<ListaGeneralRecetas />} />
           <Route path="/almacen/productos-intermedios" element={<ProductosIntermedios />} />
+          <Route path="/almacen/config-declaracion" element={<ConfigDeclaracion />} />
 
           {/* ALMACÉN: OPERACIONES */}
           {/* <Route path="/almacen/pedidos-consolidados-almacen" element={<PedidosConsolidadosAlmacen />} /> */}
@@ -101,10 +98,10 @@ const App: React.FC = () => {
           <Route path="/compras/lista-precios" element={<ListaPreciosInsumos />} />
 
           {/* CONFIGURACIÓN Y MAESTROS */}
-          <Route path="/config/registro-producto" element={<RegistroProducto />} />
-          <Route path="/config/guia-registro" element={<GuiaRegistroProducto />} />
+          <Route path="/config/registro-producto" element={<PlaceholderPage title="Registro de Producto" />} />
+          <Route path="/config/guia-registro" element={<PlaceholderPage title="Guía Registro de Producto" />} />
           <Route path="/config/pre-registro" element={<PreRegistroProductos />} />
-          <Route path="/config/registro-grupo" element={<RegistroGrupoProducto />} />
+          <Route path="/config/registro-grupo" element={<PlaceholderPage title="Registro Grupo Producto" />} />
 
           {/* Test Route */}
           <Route path="/test-mui" element={<MUITest />} />

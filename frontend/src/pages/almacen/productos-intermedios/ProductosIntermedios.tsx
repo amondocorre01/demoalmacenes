@@ -171,7 +171,7 @@ export const ProductosIntermedios: React.FC = () => {
           size="md"
           icon="add_circle"
           onClick={handleCreateNew}
-          className="!py-2.5 !px-6 shadow-lg shadow-primary/20 uppercase text-xs font-black"
+          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
         >
           Nuevo Producto
         </Button>
@@ -179,7 +179,7 @@ export const ProductosIntermedios: React.FC = () => {
 
       {/* ── Tarjetas de Métricas Compactas (AGENTS.md) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        
+
         {/* Card 1: Total */}
         <div className="bg-surface p-5 rounded-2xl border border-outline-variant shadow-sm flex items-center justify-between">
           <div>
@@ -228,7 +228,7 @@ export const ProductosIntermedios: React.FC = () => {
 
       {/* ── Main Data Canvas / Tabla Unificada (AGENTS.md) ── */}
       <div className="bg-surface rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
-        
+
         {/* Header Superior con Buscador Tipo Píldora */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border-b border-outline-variant gap-3 bg-zinc-50/50 dark:bg-zinc-900/40">
           <div className="flex items-center gap-2">
@@ -270,13 +270,13 @@ export const ProductosIntermedios: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-surface-variant/30 border-b border-outline-variant">
-                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">N°</td>
-                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Nombre del Producto</td>
-                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Duración (Días)</td>
-                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">% Desperdicio</td>
-                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Primario</td>
-                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Estado</td>
-                <td className="pr-6 pl-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">Acciones</td>
+                <td className="pl-4 pr-1 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap w-8">N°</td>
+                <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Nombre del Producto</td>
+                <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Duración (Días)</td>
+                <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">% Desperdicio</td>
+                <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Primario</td>
+                <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Estado</td>
+                <td className="pr-4 pl-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">Acciones</td>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/30">
@@ -287,11 +287,11 @@ export const ProductosIntermedios: React.FC = () => {
 
                   return (
                     <tr key={idx} className="hover:bg-surface-variant/30 transition-colors group">
-                      <td className="pl-6 pr-2 py-3 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                      <td className="pl-4 pr-1 py-1 font-black text-xs text-primary tracking-tight whitespace-nowrap">
                         <span>{globalIdx}</span>
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-1">
                         <div className="flex flex-col">
                           <span className="font-black text-on-surface uppercase text-xs tracking-tight font-headline">
                             {item.NOMBRE || item.nombre}
@@ -304,50 +304,48 @@ export const ProductosIntermedios: React.FC = () => {
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2 py-1 whitespace-nowrap">
                         <span className="text-xs font-bold text-on-surface font-mono">
                           {item.DURACION ?? item.duracion ?? 0} DÍAS
                         </span>
                       </td>
 
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2 py-1 whitespace-nowrap">
                         <span className="text-xs font-bold text-on-surface font-mono">
                           {item.PORCENTAJE_DESPERDICIO ?? item.porcentaje_desperdicio ?? 0} %
                         </span>
                       </td>
 
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
-                          (item.PRODUCTO_PRIMARIO || item.producto_primario)
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${(item.PRODUCTO_PRIMARIO || item.producto_primario)
                             ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
                             : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
-                        }`}>
+                          }`}>
                           {(item.PRODUCTO_PRIMARIO || item.producto_primario) ? 'SÍ' : 'NO'}
                         </span>
                       </td>
 
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                          isActivo
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${isActivo
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                             : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                        }`}>
+                          }`}>
                           {isActivo ? 'HABILITADO' : 'INHABILITADO'}
                         </span>
                       </td>
 
                       {/* Columna Acciones con Botones Estandarizados (AGENTS.md) */}
-                      <td className="pr-6 pl-4 py-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          
+                      <td className="pr-4 pl-2 py-1 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+
                           {/* Botón Editar */}
                           <button
                             type="button"
                             onClick={() => handleEdit(item)}
                             title="Editar Producto Intermedio"
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
+                            className="w-7 h-7 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
                           >
-                            <span className="material-symbols-outlined text-[14px] sm:text-base">edit</span>
+                            <span className="material-symbols-outlined text-[14px]">edit</span>
                           </button>
 
                           {/* Botón Cambiar Estado */}
@@ -355,13 +353,12 @@ export const ProductosIntermedios: React.FC = () => {
                             type="button"
                             onClick={() => handleToggleState(item)}
                             title={isActivo ? 'Inhabilitar Producto' : 'Habilitar Producto'}
-                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border transition-all flex items-center justify-center font-bold cursor-pointer ${
-                              isActivo
+                            className={`w-7 h-7 rounded-lg border transition-all flex items-center justify-center font-bold cursor-pointer ${isActivo
                                 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500 hover:text-white'
                                 : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500 hover:text-white'
-                            }`}
+                              }`}
                           >
-                            <span className="material-symbols-outlined text-[14px] sm:text-base">
+                            <span className="material-symbols-outlined text-[14px]">
                               {isActivo ? 'block' : 'check_circle'}
                             </span>
                           </button>

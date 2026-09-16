@@ -1,367 +1,605 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * SolicitudesAlmacen.tsx
+ * 
+ * 1. Propósito de la vista:
+ *    Gestión, registro y seguimiento de solicitudes de pedidos internos de insumos y materiales
+ *    entre áreas de producción y almacenes de la planta. Permite consultar el historial de pedidos
+ *    filtrados por almacén y rango de fechas, registrar nuevas solicitudes validando stock real
+ *    y visualizar el desglose detallado de cada pedido.
+ * 
+ * 2. APIs Utilizadas:
+ *    - GET /v1/pedidos/almacenes (loadApiGetAlmacenesUsuario - Listar almacenes del usuario)
+ *    - GET /v1/inventario/produccion/areas (loadApiGetAreasUsuario - Listar áreas habilitadas)
+ *    - GET /v1/pedidos/pedidos-almacen (loadApiGetPedidosAlmacen - Listar solicitudes con filtros)
+ *    - GET /v1/pedidos/productos-planta-almacen (loadApiGetProductosPlantaAlmacen - Catálogo y stock de almacén)
+ *    - GET /v1/pedidos/inventario-planta (loadApiGetInventarioPlanta - Inventario disponible en planta)
+ *    - POST /v1/pedidos/solicitudes (loadApiEnviarSolicitud - Registrar nueva solicitud)
+ *    - PUT /v1/pedidos/solicitudes (loadApiEditarSolicitud - Modificar cantidades de solicitud)
+ * 
+ * 3. Controles Clave:
+ *    - Tabla unificada compacta y responsiva según las directrices oficiales de AGENTS.md.
+ *    - Buscador tipo píldora en la cabecera superior derecha de la tabla.
+ *    - Filtro compuesto por almacén y rango de fechas con botón estandarizado de búsqueda con icono.
+ *    - Paginación dinámica con control de tamaño de página (5, 10, 20, 50 filas).
+ *    - Botones de acción tipo icono estandarizados con paleta corporativa para ver detalle y editar.
+ *    - Modales ubicados en components/ (ModalNuevaSolicitud y ModalDetalleSolicitud).
+ *    - Manejo estricto de fechas en formato DD/MM/YYYY sin desfase de zona horaria.
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Autocomplete,
   TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  IconButton,
-  InputAdornment,
   useTheme,
   useMediaQuery,
-  Snackbar,
-  Alert,
-  Divider
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
+import { Button } from '../../../components/common/Button';
+import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import {
+  useSolicitudesAlmacenServices,
+  SolicitudAlmacenItem,
+} from './services/useSolicitudesAlmacen';
+import { ModalNuevaSolicitud } from './components/ModalNuevaSolicitud';
+import { ModalDetalleSolicitud } from './components/ModalDetalleSolicitud';
+import ConsoleLogMessage from '../../../config/console';
 
-interface RequestProduct {
-  id: number;
-  name: string;
-  detail: string;
-  measureQty: string;
-  stock: number;
-  requestQty: string | number;
-  requestByUnit: string;
-}
-
-const availableAreas = ['Producción', 'Planta', 'Administracion Planta', 'Administración', 'Sistemas'];
-const availableWarehousesList = ['Panadería', 'Tortas', 'Pies', 'Frutas', 'Bizcochos', 'Escencias', 'Polvos'];
-
-const initialMockProducts: RequestProduct[] = [
-  {
-    id: 1,
-    name: 'CHISPAS DE CHOCOLATE',
-    detail: '103320 CHIPS COMP SEMI AMARGO 650-750 1X10KG EXP',
-    measureQty: '1000.00 Gramo',
-    stock: 10,
-    requestQty: '',
-    requestByUnit: 'Kilogramos'
-  },
-  {
-    id: 2,
-    name: 'HARINA DE TRIGO 000',
-    detail: 'HARINA ESPECIAL X 50KG',
-    measureQty: '50.00 Kilogramo',
-    stock: 120,
-    requestQty: '',
-    requestByUnit: 'Bolsas'
-  },
-  {
-    id: 3,
-    name: 'MANTEQUILLA CON SAL',
-    detail: 'MANTEQUILLA PURA X 1KG',
-    measureQty: '1000.00 Gramo',
-    stock: 45,
-    requestQty: '',
-    requestByUnit: 'Unidades'
-  }
-];
-
-const SolicitudesAlmacen: React.FC = () => {
+export const SolicitudesAlmacen: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  const {
+    loadApiGetAlmacenesUsuario,
+    loadApiGetAreasUsuario,
+    loadApiGetPedidosAlmacen,
+  } = useSolicitudesAlmacenServices();
+
+  // Estados de datos principales
+  const [requestsList, setRequestsList] = useState<SolicitudAlmacenItem[]>([]);
+  const [warehousesList, setWarehousesList] = useState<any[]>([]);
+  const [areasList, setAreasList] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Filtros superiores
+  const [selectedWarehouse, setSelectedWarehouse] = useState<any | null>(null);
   const [startDate, setStartDate] = useState<Dayjs | null>(dayjs().startOf('month'));
   const [endDate, setEndDate] = useState<Dayjs | null>(dayjs());
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
-  const [showOnlyZeroStock, setShowOnlyZeroStock] = useState(false);
 
-  // Modal State
-  const [selectedArea, setSelectedArea] = useState<string | null>(null);
-  const [selectedWarehouse, setSelectedWarehouse] = useState<string | null>(null);
-  const [deliveryDate, setDeliveryDate] = useState<Dayjs | null>(dayjs().add(1, 'day'));
-  const [tableProducts, setTableProducts] = useState<RequestProduct[]>(initialMockProducts);
+  // Búsqueda en tabla y paginación
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  const requests = [
-    { warehouse: 'Panadería', dateTime: '24/10/2023 - 08:30 AM', requestedBy: 'Juan Pérez', deliveryDate: '25/10/2023', area: 'Producción', inCharge: 'Helen M.', status: 'ENTREGADO', statusColor: 'bg-green-100 text-green-700' },
-    { warehouse: 'Tortas', dateTime: '24/10/2023 - 09:15 AM', requestedBy: 'Marta Gómez', deliveryDate: '24/10/2023', area: 'Repostería', inCharge: 'Carlos R.', status: 'SOLICITADO', statusColor: 'bg-red-100 text-red-700' },
-    { warehouse: 'Pies', dateTime: '23/10/2023 - 14:20 PM', requestedBy: 'Luis Rojas', deliveryDate: '26/10/2023', area: 'Logística', inCharge: 'Helen M.', status: 'SOLICITADO', statusColor: 'bg-blue-100 text-blue-700' },
-    { warehouse: 'Bizcochos', dateTime: '22/10/2023 - 11:45 AM', requestedBy: 'Ana Belén', deliveryDate: '23/10/2023', area: 'Producción', inCharge: 'Carlos R.', status: 'ENTREGADO', statusColor: 'bg-green-100 text-green-700' },
-  ];
+  // Estados de modales
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [editingRequest, setEditingRequest] = useState<SolicitudAlmacenItem | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [viewingRequest, setViewingRequest] = useState<SolicitudAlmacenItem | null>(null);
 
-  const handleQtyChange = (id: number, value: string) => {
-    setTableProducts(prev => prev.map(p => p.id === id ? { ...p, requestQty: value } : p));
+  // Carga inicial de catálogos
+  const fetchInitialData = async () => {
+    setIsLoading(true);
+    const [almacenesRes, areasRes] = await Promise.all([
+      loadApiGetAlmacenesUsuario(),
+      loadApiGetAreasUsuario(),
+    ]);
+    ConsoleLogMessage("almacenes usuario", almacenesRes)
+    let loadedWarehouses: any[] = [];
+    if (Array.isArray(almacenesRes)) {
+      loadedWarehouses = almacenesRes;
+    } else if (almacenesRes?.almacenes || almacenesRes?.data) {
+      loadedWarehouses = almacenesRes.almacenes || almacenesRes.data;
+    }
+    setWarehousesList(loadedWarehouses);
+
+    let loadedAreas: any[] = [];
+    if (Array.isArray(areasRes)) {
+      loadedAreas = areasRes;
+    } else if (areasRes?.areas || areasRes?.data) {
+      loadedAreas = areasRes.areas || areasRes.data;
+    }
+    setAreasList(loadedAreas);
+
+    // Cargar pedidos iniciales
+    await fetchPedidos(selectedWarehouse);
+    setIsLoading(false);
   };
 
-  const handleUnitChange = (id: number, value: string) => {
-    setTableProducts(prev => prev.map(p => p.id === id ? { ...p, requestByUnit: value } : p));
+  // Carga de solicitudes con filtros
+  const fetchPedidos = async (wh = selectedWarehouse) => {
+    setIsLoading(true);
+    try {
+      const fechaInicioStr = startDate && startDate.isValid() ? startDate.format('YYYY-MM-DD') : '';
+      const fechaFinStr = endDate && endDate.isValid() ? endDate.format('YYYY-MM-DD') : '';
+
+      const res = await loadApiGetPedidosAlmacen({
+        id_planta_almacen: wh?.ID_PLANTA_ALMACEN || undefined,
+        almacenes: wh?.ID_PLANTA_ALMACEN ? String(wh.ID_PLANTA_ALMACEN) : '',
+        fecha_inicio: fechaInicioStr,
+        fecha_fin: fechaFinStr,
+      });
+
+      if (Array.isArray(res)) {
+        setRequestsList(res);
+      } else if (res?.pedidos || res?.data) {
+        setRequestsList(res.pedidos || res.data);
+      } else {
+        setRequestsList([]);
+      }
+      setPage(1);
+    } catch (err) {
+      setRequestsList([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSaveRequest = () => {
-    if (!selectedArea || !selectedWarehouse) {
-      setSnackbar({ open: true, message: 'Por favor seleccione Área y Almacén', severity: 'error' });
-      return;
-    }
-    const hasItems = tableProducts.some(p => p.requestQty && parseFloat(p.requestQty.toString()) > 0);
-    if (!hasItems) {
-      setSnackbar({ open: true, message: 'Por favor ingrese al menos una cantidad válida', severity: 'error' });
-      return;
-    }
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
 
-    setSnackbar({ open: true, message: 'Solicitud registrada correctamente', severity: 'success' });
-    setIsModalOpen(false);
-    // Reset modal
-    setSelectedArea(null);
-    setSelectedWarehouse(null);
-    setTableProducts(initialMockProducts);
+  // Formatear fechas para visualización sin desfase de zona horaria
+  const formatDateDisplay = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const clean = dateStr.split('T')[0];
+    const [year, month, day] = clean.split('-');
+    if (!year || !month || !day) return dateStr;
+    return `${day}/${month}/${year}`;
+  };
+
+  // Formatear hora para visualización extrayendo solo el tiempo (evitando 1970-01-01T...)
+  const formatTimeDisplay = (timeStr?: string) => {
+    if (!timeStr) return '';
+    if (timeStr.includes('T')) {
+      const timePart = timeStr.split('T')[1];
+      return timePart.split('.')[0].replace('Z', '');
+    }
+    return timeStr.split('.')[0];
+  };
+
+  // Filtrado de solicitudes por buscador interno tipo píldora
+  const filteredRequests = useMemo(() => {
+    if (!searchTerm.trim()) return requestsList;
+    const query = searchTerm.toLowerCase().trim();
+
+    return requestsList.filter((req) => {
+      const warehouse = (req.ALMACEN || '').toLowerCase();
+      const user = (req.NOMBRE_USUARIO || '').toLowerCase();
+      const area = (req.NOMBRE_AREA || '').toLowerCase();
+      const id = String(req.ID_PLANTA_ALMACEN_DOCUMENTO || '');
+      const status = String(req.ESTADO || '').toLowerCase();
+
+      return (
+        warehouse.includes(query) ||
+        user.includes(query) ||
+        area.includes(query) ||
+        id.includes(query) ||
+        status.includes(query)
+      );
+    });
+  }, [requestsList, searchTerm]);
+
+  // Paginación
+  const totalItems = filteredRequests.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedRequests = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, page, pageSize]);
+
+  // Abrir modal de detalle
+  const handleOpenDetail = (item: SolicitudAlmacenItem) => {
+    setViewingRequest(item);
+    setIsDetailModalOpen(true);
+  };
+
+  // Abrir modal de edición
+  const handleOpenEdit = (item: SolicitudAlmacenItem) => {
+    setEditingRequest(item);
+    setIsNewModalOpen(true);
+  };
+
+  // Abrir modal de nueva solicitud
+  const handleOpenNew = () => {
+    setEditingRequest(null);
+    setIsNewModalOpen(true);
   };
 
   return (
-    <div className="max-w-7xl mx-auto w-full animate-in fade-in duration-500 pb-20 px-4 md:px-0">
-      <div className="flex justify-between items-end mb-4 pt-6">
+    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
+      <LoadingOverlay show={isLoading} message="Cargando solicitudes..." />
+
+      {/* ── Cabecera Principal Estandarizada (AGENTS.md) ── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-1">
         <div>
-          <p className="text-3xl md:text-3xl font-black text-zinc-900 tracking-tighter uppercase leading-none">Solicitudes de Almacén</p>
-          <p className="text-[10px] md:text-xs text-zinc-400 font-bold uppercase tracking-[0.2em] mt-2">Gestione y rastree los pedidos internos de insumos entre áreas y almacenes.</p>
+          <h1 className="text-2xl font-bold text-on-background uppercase font-headline">
+            Solicitudes de Almacén
+          </h1>
+          <p className="text-[10px] font-black text-on-surface-variant mt-1 font-body">
+            Gestione y rastree los pedidos internos de insumos entre áreas y almacenes.
+          </p>
         </div>
+
+        <Button
+          variant="primary"
+          size="sm"
+          icon="add_circle"
+          onClick={handleOpenNew}
+          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+        >
+          Nueva Solicitud
+        </Button>
       </div>
 
-      {/* Filter Section */}
-      <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-zinc-100 shadow-sm mb-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Filtro Almacén</label>
+      {/* ── Selector de Almacén y Fechas Estandarizado (AGENTS.md) ── */}
+      <div className="flex flex-col lg:flex-row items-stretch gap-4 mb-2">
+        <div className="flex bg-surface p-3.5 rounded-2xl border border-outline-variant shadow-sm gap-3 items-end flex-col sm:flex-row flex-1">
+          {/* Selector de Almacén */}
+          <div className="w-full sm:flex-1 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Seleccionar Almacén
+            </label>
             <Autocomplete
-              multiple
-              options={availableWarehousesList}
-              renderInput={(params) => <TextField {...params} size="small" placeholder="Seleccionar..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px', bgcolor: 'zinc-50/30' } }} />}
+              options={warehousesList}
+              getOptionLabel={(option) => option.DESCRICION || option.nombre || ''}
+              value={selectedWarehouse}
+              onChange={(_, newValue) => {
+                setSelectedWarehouse(newValue);
+                setRequestsList([]);
+              }}
+              isOptionEqualToValue={(option, value) => option.ID_PLANTA_ALMACEN === value?.ID_PLANTA_ALMACEN}
+              fullWidth
+              noOptionsText="No hay almacenes disponibles"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '15px',
+                  backgroundColor: 'var(--input-bg, var(--surface))',
+                  color: 'var(--on-surface)',
+                  padding: '3px 8px',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--outline-variant)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--outline)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--primary)',
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: 'var(--on-surface-variant)',
+                  }
+                }
+              }}
+              renderInput={(params) => (
+                <TextField {...params} variant="outlined" size="small" placeholder="TODOS LOS ALMACENES" />
+              )}
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Fecha Inicio</label>
+
+          {/* Fecha Inicio */}
+          <div className="w-full sm:w-48 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Fecha Inicio
+            </label>
             <DatePicker
               value={startDate}
-              onChange={(v) => setStartDate(v)}
-              slotProps={{ textField: { size: 'small', fullWidth: true, sx: { '& .MuiOutlinedInput-root': { borderRadius: '14px', bgcolor: 'zinc-50/30' } } } }}
+              onChange={(v) => {
+                setStartDate(v);
+                setRequestsList([]);
+              }}
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: {
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      }
+                    }
+                  }
+                }
+              }}
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Fecha Fin</label>
+
+          {/* Fecha Fin */}
+          <div className="w-full sm:w-48 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Fecha Fin
+            </label>
             <DatePicker
               value={endDate}
-              onChange={(v) => setEndDate(v)}
-              slotProps={{ textField: { size: 'small', fullWidth: true, sx: { '& .MuiOutlinedInput-root': { borderRadius: '14px', bgcolor: 'zinc-50/30' } } } }}
+              onChange={(v) => {
+                setEndDate(v);
+                setRequestsList([]);
+              }}
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: {
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      }
+                    }
+                  }
+                }
+              }}
             />
           </div>
-          <button className="h-10 bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-primary transition-all shadow-lg shadow-zinc-200">
-            Filtrar Solicitudes
+
+          {/* Botón Buscar Exacto */}
+          <button
+            type="button"
+            onClick={() => fetchPedidos(selectedWarehouse)}
+            title="Buscar Solicitudes"
+            className="w-10 h-10 rounded-2xl bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0 shadow-inner"
+          >
+            <span className="material-symbols-outlined text-2xl font-bold">search</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm overflow-hidden mb-10">
-        <div className="p-8 md:p-10 border-b border-zinc-50 flex flex-col md:flex-row justify-between items-center gap-6 bg-zinc-50/20">
+      {/* ── Main Data Canvas (Tabla Unificada) ── */}
+      <div className="bg-surface rounded-[1rem] border border-outline-variant shadow-sm overflow-hidden mb-4">
+        {/* Cabecera Superior de la Tabla */}
+        <div className="p-3 sm:p-4 border-b border-outline-variant flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-surface-variant/20">
           <div>
-            <p className="text-xs font-black text-zinc-800 uppercase tracking-[0.2em]">Historial Reciente</p>
-            <p className="text-[10px] text-zinc-400 font-bold uppercase mt-1">Total de registros: 128</p>
+            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest font-headline">
+              Historial de Solicitudes
+            </p>
+            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-wider">
+              Total encontrados: {totalItems} registros
+            </p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="w-full md:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-zinc-900 text-white text-[10px] font-black rounded-2xl hover:bg-primary hover:shadow-xl hover:shadow-primary/20 transition-all uppercase tracking-[0.2em]"
-          >
-            <span className="material-symbols-outlined text-lg">add_circle</span>
-            NUEVA SOLICITUD
-          </button>
+
+          {/* Buscador de Tabla Interno tipo píldora */}
+          <div className="relative group w-full sm:w-64">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              placeholder="BUSCAR..."
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2 px-4 pl-9 text-[10px] font-black text-zinc-900 dark:text-zinc-150 transition-all uppercase tracking-widest focus:outline-none focus:ring-4 focus:ring-primary/10"
+            />
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm pointer-events-none">
+              search
+            </span>
+          </div>
         </div>
 
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-100 w-full">
-          <table className="w-full text-left border-collapse min-w-[1200px]">
+        {/* Tabla */}
+        <div className="overflow-x-auto w-full scrollbar-thin">
+          <table className="w-full text-left border-collapse min-w-[950px]">
             <thead>
-              <tr className="bg-zinc-50/50">
-                <th className="px-10 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Almacén</th>
-                <th className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Fecha/Hora</th>
-                <th className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Solicitado Por</th>
-                <th className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Entrega</th>
-                <th className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Área</th>
-                <th className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Encargado</th>
-                <th className="px-8 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Estado</th>
-                <th className="px-10 py-6 text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em] text-right">Acciones</th>
+              <tr className="bg-zinc-50/50 dark:bg-zinc-850/40 border-b border-outline-variant">
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                  N°
+                </td>
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Almacén Destino
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Fecha Registro
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Solicitado Por
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Fecha Entrega
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Área Solicitante
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center">
+                  Estado
+                </td>
+                <td className="pr-6 pl-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
+                  Acciones
+                </td>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-50 text-sm">
-              {requests.map((req, idx) => (
-                <tr key={idx} className="hover:bg-zinc-50/30 transition-all group">
-                  <td className="px-10 py-6 text-xs font-black text-zinc-900 uppercase tracking-tight">{req.warehouse}</td>
-                  <td className="px-8 py-6 text-[11px] font-bold text-zinc-500 uppercase tracking-tighter">{req.dateTime}</td>
-                  <td className="px-8 py-6 text-xs font-bold text-zinc-700 uppercase tracking-tight">{req.requestedBy}</td>
-                  <td className="px-8 py-6 text-[11px] font-bold text-zinc-500 uppercase tracking-tighter">{req.deliveryDate}</td>
-                  <td className="px-8 py-6 text-[11px] font-black text-zinc-400 uppercase tracking-widest">{req.area}</td>
-                  <td className="px-8 py-6 text-[11px] font-bold text-zinc-500 uppercase">{req.inCharge}</td>
-                  <td className="px-8 py-6">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${req.statusColor} shadow-sm`}>
-                      {req.status}
+            <tbody className="divide-y divide-zinc-50 dark:divide-zinc-850">
+              {paginatedRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-zinc-400 dark:text-zinc-500">
+                    <span className="material-symbols-outlined text-4xl mb-2 block opacity-40">
+                      inbox
                     </span>
-                  </td>
-                  <td className="px-10 py-6 text-right space-x-3">
-                    <IconButton size="small" className="text-zinc-200 hover:text-zinc-900 transition-colors"><span className="material-symbols-outlined text-lg">visibility</span></IconButton>
-                    <IconButton size="small" className="text-zinc-200 hover:text-primary transition-colors"><span className="material-symbols-outlined text-lg">edit</span></IconButton>
+                    <p className="text-xs font-black uppercase tracking-wider">
+                      No se encontraron solicitudes registradas
+                    </p>
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase mt-1">
+                      Intente ajustar los filtros de almacén o fechas.
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginatedRequests.map((req, idx) => {
+                  const itemNumber = (page - 1) * pageSize + idx + 1;
+                  const isDelivered =
+                    req.ESTADO === 1 || req.ESTADO === '1' || req.ESTADO === 'ENTREGADO';
+
+                  return (
+                    <tr
+                      key={req.ID_PLANTA_ALMACEN_DOCUMENTO || idx}
+                      className="hover:bg-zinc-50/30 dark:hover:bg-zinc-850/30 transition-colors group"
+                    >
+                      <td className="pl-6 pr-2 py-1 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                        <span>{itemNumber}</span>
+                      </td>
+                      <td className="pl-6 pr-2 py-1">
+                        <span className="font-black text-xs text-on-surface uppercase tracking-tight">
+                          {req.ALMACEN || `Almacén #${req.ID_PLANTA_ALMACEN || '-'}`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-1 whitespace-nowrap">
+                        <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase">
+                          {formatDateDisplay(req.FECHA_REGISTRO)}
+                        </span>
+                        {req.HORA_REGISTRO && (
+                          <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block">
+                            {formatTimeDisplay(req.HORA_REGISTRO)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-1">
+                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase">
+                          {req.NOMBRE_USUARIO || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-1 whitespace-nowrap">
+                        <span className="text-[11px] font-black text-primary uppercase">
+                          {formatDateDisplay(req.FECHA_A_ENTREGAR)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-1">
+                        <span className="text-[11px] font-black text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                          {req.AREA || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-1 text-center">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${isDelivered
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                            : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                            }`}
+                        >
+                          {isDelivered ? 'ENTREGADO' : 'SOLICITADO'}
+                        </span>
+                      </td>
+                      <td className="pr-6 pl-4 py-1 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Botón Ver Detalle */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDetail(req)}
+                            title="Ver Detalle de Solicitud"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px] sm:text-base">
+                              visibility
+                            </span>
+                          </button>
+
+                          {/* Botón Editar */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(req)}
+                            title="Editar Solicitud"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-900 hover:text-white dark:hover:bg-zinc-100 dark:hover:text-zinc-900 transition-all flex items-center justify-center font-bold cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px] sm:text-base">
+                              edit
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* ── Paginación Estándar Inferior ── */}
+        {!isLoading && requestsList.length > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 border-t border-zinc-100 dark:border-zinc-800/80">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                  Mostrar:
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-350 px-2.5 outline-none shadow-sm cursor-pointer"
+                >
+                  <option value={5}>5 filas</option>
+                  <option value={10}>10 filas</option>
+                  <option value={20}>20 filas</option>
+                  <option value={50}>50 filas</option>
+                </select>
+              </div>
+              <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                Mostrando {totalItems > 0 ? (page - 1) * pageSize + 1 : 0}-
+                {Math.min(page * pageSize, totalItems)} de {totalItems} registros
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_left</span>
+              </button>
+              <span className="text-[10px] font-black uppercase text-zinc-550 dark:text-zinc-400 px-2">
+                Página {page} de {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                disabled={page === totalPages}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* New Request Modal */}
-      <Dialog
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        fullScreen={isMobile}
-        slotProps={{ paper: { sx: { borderRadius: isMobile ? 0 : '2.5rem', p: 0.5, bgcolor: 'zinc.50/50' } } }}
-      >
-        <DialogTitle sx={{ p: 2, px: 4, bgcolor: 'white', borderBottom: '1px solid', borderColor: 'zinc-50' }}>
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center shadow-lg">
-                <span className="material-symbols-outlined text-xl">post_add</span>
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em]">Formulario Interno</p>
-                <p className="text-xl font-black text-zinc-900 uppercase tracking-tighter">Nueva Solicitud</p>
-              </div>
-            </div>
-            <IconButton onClick={() => setIsModalOpen(false)} size="small" className="bg-zinc-50">
-              <span className="material-symbols-outlined text-lg">close</span>
-            </IconButton>
-          </div>
-        </DialogTitle>
+      {/* ── Modal Nueva / Editar Solicitud ── */}
+      <ModalNuevaSolicitud
+        open={isNewModalOpen}
+        onClose={() => {
+          setIsNewModalOpen(false);
+          setEditingRequest(null);
+        }}
+        warehouses={warehousesList}
+        areas={areasList}
+        onSaveSuccess={() => fetchPedidos(selectedWarehouse)}
+        editItem={editingRequest}
+      />
 
-        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-4 mb-8">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Área a Solicitar</label>
-              <Autocomplete
-                options={availableAreas}
-                value={selectedArea}
-                onChange={(_, v) => setSelectedArea(v)}
-                renderInput={(params) => <TextField {...params} size="small" placeholder="Seleccionar área..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }} />}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Almacén Destino</label>
-              <Autocomplete
-                options={availableWarehousesList}
-                value={selectedWarehouse}
-                onChange={(_, v) => setSelectedWarehouse(v)}
-                renderInput={(params) => <TextField {...params} size="small" placeholder="Seleccionar almacén..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '14px' } }} />}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Fecha de Entrega</label>
-              <DatePicker
-                value={deliveryDate}
-                onChange={(v) => setDeliveryDate(v)}
-                slotProps={{ textField: { size: 'small', fullWidth: true, sx: { '& .MuiOutlinedInput-root': { borderRadius: '14px' } } } }}
-              />
-            </div>
-          </div>
-
-          <div className="bg-zinc-50/50 rounded-[2rem] border border-zinc-100 overflow-hidden">
-            <div className="px-8 py-4 border-b border-zinc-100 bg-zinc-50/80 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div>
-                <p className="text-[10px] font-black text-zinc-800 uppercase tracking-[0.2em]">Desglose de Productos</p>
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest italic">{selectedWarehouse ? `* Mostrando stock real en ${selectedWarehouse}` : '* Seleccione un almacén para ver stock'}</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowOnlyZeroStock(!showOnlyZeroStock)}
-                  className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border ${showOnlyZeroStock ? 'bg-rose-500 text-white border-rose-600 shadow-lg shadow-rose-200' : 'bg-white text-zinc-400 border-zinc-200 hover:bg-zinc-50'}`}
-                >
-                  <span className="material-symbols-outlined text-sm">{showOnlyZeroStock ? 'filter_list_off' : 'filter_list'}</span>
-                  Filtrar Stock 0
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto w-full scrollbar-thin scrollbar-thumb-zinc-200">
-              <table className="w-full text-left border-collapse min-w-[1000px]">
-                <thead>
-                  <tr className="bg-white/50 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 border-b border-zinc-100">
-                    <td className="px-8 py-4">Producto</td>
-                    <td className="px-8 py-4">Producto Fact</td>
-                    <td className="px-8 py-4 text-center">Cant. Medida</td>
-                    <td className="px-8 py-4 text-center">Stock</td>
-                    <td className="px-8 py-4 text-center">Cantidad</td>
-                    <td className="px-8 py-4">Solicitar Por</td>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50 bg-white">
-                  {tableProducts
-                    .filter(p => !showOnlyZeroStock || p.stock === 0)
-                    .map((p) => (
-                      <tr key={p.id} className="hover:bg-zinc-50 transition-all group">
-                        <td className="px-8 py-5">
-                          <p className="font-black text-zinc-900 text-[11px] uppercase tracking-tight group-hover:text-primary transition-colors">{p.name}</p>
-                        </td>
-                        <td className="px-8 py-5">
-                          <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-tight max-w-[200px] truncate" title={p.detail}>{p.detail}</p>
-                        </td>
-                        <td className="px-8 py-5 text-center font-black text-zinc-500 text-[11px]">{p.measureQty}</td>
-                        <td className="px-8 py-5 text-center">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black ${p.stock <= 0 ? 'bg-rose-50 text-rose-600' : 'bg-zinc-100 text-zinc-900'}`}>
-                            {p.stock}
-                          </span>
-                        </td>
-                        <td className="px-8 py-5 text-center">
-                          <input
-                            type="number"
-                            className={`w-24 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5 text-xs font-black text-center outline-none focus:border-primary transition-all ${p.stock <= 0 ? 'opacity-30 pointer-events-none' : 'text-zinc-900'}`}
-                            placeholder="0.00"
-                            value={p.requestQty}
-                            max={p.stock}
-                            min={0}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              if (val <= p.stock) {
-                                handleQtyChange(p.id, e.target.value);
-                              } else {
-                                handleQtyChange(p.id, p.stock.toString());
-                                setSnackbar({ open: true, message: `No puede solicitar más del stock disponible (${p.stock})`, severity: 'error' });
-                              }
-                            }}
-                          />
-                        </td>
-                        <td className="px-8 py-5">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                            {p.requestByUnit}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2.5, px: 4, bgcolor: 'white', borderTop: '1px solid', borderColor: 'zinc-50' }}>
-          <Button onClick={() => setIsModalOpen(false)} sx={{ color: 'zinc-400', fontWeight: 900, fontSize: '10px', px: 4 }}>Cancelar</Button>
-          <button
-            onClick={handleSaveRequest}
-            className="h-12 px-10 bg-zinc-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-zinc-200 hover:bg-primary hover:shadow-primary/20 transition-all active:scale-[0.98] flex items-center gap-3"
-          >
-            <span className="material-symbols-outlined text-lg">send</span>
-            Enviar Solicitud
-          </button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} variant="filled" sx={{ width: '100%', borderRadius: '20px', fontWeight: 900, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.1em' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+      {/* ── Modal Detalle Solicitud ── */}
+      <ModalDetalleSolicitud
+        open={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setViewingRequest(null);
+        }}
+        item={viewingRequest}
+      />
     </div>
   );
 };
