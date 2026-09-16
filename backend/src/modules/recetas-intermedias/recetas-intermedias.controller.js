@@ -85,6 +85,18 @@ const agregarProductosRI = tryCatch(async (req, res) => {
     res.json({ success: true, message: result.message });
 });
 
+const clonarRecetaRI = tryCatch(async (req, res) => {
+    const idUsuario = getUserId(req);
+    const result = await Service.clonarRecetaRI(req.body, idUsuario);
+    res.status(201).json({ success: true, ...result });
+});
+
+const crearProductoIntermedioAndAddReceta = tryCatch(async (req, res) => {
+    const idUsuario = getUserId(req);
+    const result = await Service.crearProductoIntermedioAndAddReceta(req.body, idUsuario);
+    res.status(201).json({ success: true, ...result });
+});
+
 module.exports = {
     listAlmacenUsuario,
     listUnidadMedida,
@@ -100,5 +112,7 @@ module.exports = {
     getRecetaIntermedio,
     crearRecetaIntermedio,
     editarRecetaIntermedio,
-    agregarProductosRI
+    agregarProductosRI,
+    clonarRecetaRI,
+    crearProductoIntermedioAndAddReceta
 };

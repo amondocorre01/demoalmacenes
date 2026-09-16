@@ -300,6 +300,154 @@ class RecetasIntermediasService {
 
         return { message: 'Se registro correctamente la informacion.' };
     }
+
+    async clonarRecetaRI({ id_producto_intermedio = 0, id_planta_ri_pi = 0 } = {}, idUsuario) {
+        if (!id_producto_intermedio) {
+            throw new AppError('El id_producto_intermedio es requerido.', 400);
+        }
+        if (!id_planta_ri_pi) {
+            throw new AppError('El id_planta_ri_pi es requerido.', 400);
+        }
+
+        const existeProducto = await Repo.existeProductoIntermedioByID(id_producto_intermedio);
+        if (!existeProducto) {
+            throw new AppError('No existe el producto intermedio.', 404);
+        }
+
+        const existeReceta = await Repo.existeRecetaByID(id_producto_intermedio, id_planta_ri_pi);
+        if (!existeReceta) {
+            throw new AppError('No existe la receta.', 404);
+        }
+
+        const transaction = await beginTransaction();
+        try {
+            const fecha = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
+
+            const receta = await Repo.getRecetaById(id_producto_intermedio, id_planta_ri_pi, transaction);
+            const numReceta = await Repo.getMaxNumReceta(id_producto_intermedio, transaction);
+
+            await Repo.desactivarRecetasAnteriores(id_producto_intermedio, transaction);
+            await Repo.registrarLogsRI(id_producto_intermedio, idUsuario, fecha, transaction);
+
+            const nuevoIdRiPi = await Repo.clonarRecetaIntermedio(receta, numReceta, transaction);
+            if (!nuevoIdRiPi) {
+                throw new AppError('Ocurrio un error.', 500);
+            }
+            await Repo.registrarLogRI(
+                nuevoIdRiPi,
+                receta.CANTIDAD_ESTANDAR, receta.ID_UNIDAD_MEDIDA_ESTANDAR,
+                receta.CANTIDAD_ADECUACION, receta.ID_UNIDAD_MEDIDA_ADECUACION,
+                1, idUsuario, fecha, 'CLONE', transaction
+            );
+
+            const productos = await Repo.getProductosRI(id_planta_ri_pi, transaction);
+            for (const producto of productos) {
+                const nuevoIdProductoRI = await Repo.clonarProductoRI(producto, nuevoIdRiPi, numReceta, transaction);
+                await Repo.registrarLogProductosRI(nuevoIdProductoRI, producto.CANTIDAD, producto.ID_UNIDAD_MEDIDA, 1, idUsuario, fecha, 'CLONE', transaction);
+            }
+
+            await transaction.commit();
+            return { id: nuevoIdRiPi, num_receta: numReceta, message: 'Se registro correctamente la informacion.' };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+
+    async crearProductoIntermedioAndAddReceta(data, idUsuario) {
+        const {
+            nombre, duracion,
+            porcentaje_desperdicio = 0, producto_primario = 0, nota = '', estado_produccion = 0,
+            id_planta_almacen = 0,
+            id_planta_ri_pi = 0, id_sub_categoria_2 = 0,
+            cantidad_e, id_unidad_medida_e, cantidad_a, id_unidad_medida_a
+        } = data;
+
+        if (!nombre) {
+            throw new AppError('Nombre requerido.', 400);
+        }
+        if (!duracion || !Number(duracion) || Number(duracion) === 0) {
+            throw new AppError('Campo duracion no valida.', 400);
+        }
+
+        const existe = await Repo.existeProductoIntermedio(nombre, 0);
+        if (existe) {
+            throw new AppError('Ya existe un producto.', 409);
+        }
+
+        if (!id_planta_ri_pi && !id_sub_categoria_2) {
+            throw new AppError('Se requiere id_planta_ri_pi o id_sub_categoria_2.', 400);
+        }
+        if (id_planta_ri_pi && id_sub_categoria_2) {
+            throw new AppError('Solo se requiere id_planta_ri_pi o id_sub_categoria_2.', 400);
+        }
+
+        if (!cantidad_e || !Number(cantidad_e)) {
+            throw new AppError('Campo cantidad_e no valida.', 400);
+        }
+        if (!id_unidad_medida_e || !Number(id_unidad_medida_e)) {
+            throw new AppError('Campo id_unidad_medida_e no valida.', 400);
+        }
+        if (!cantidad_a || !Number(cantidad_a)) {
+            throw new AppError('Campo cantidad_a no valida.', 400);
+        }
+        if (!id_unidad_medida_a || !Number(id_unidad_medida_a)) {
+            throw new AppError('Campo id_unidad_medida_a no valida.', 400);
+        }
+
+        const transaction = await beginTransaction();
+        try {
+            const fecha = new Date().toLocaleString('en-CA', { hour12: false }).replace(',', '');
+
+            const idProducto = await Repo.crearProductoIntermedio({
+                nombre, duracion, porcentaje_desperdicio, producto_primario, nota, estado_produccion
+            }, transaction);
+            if (!idProducto) {
+                throw new AppError('Ocurrio un error al crear el producto intermedio.', 500);
+            }
+
+            if (id_planta_almacen) {
+                await Repo.addProductoIntAlmacen(id_planta_almacen, idProducto, 1, transaction);
+            }
+
+            await Repo.desactivarRecetasAnteriores(idProducto, transaction);
+            await Repo.registrarLogsRI(idProducto, idUsuario, fecha, transaction);
+
+            const numReceta = await Repo.getMaxNumReceta(idProducto, transaction);
+            const idRiPi = await Repo.crearRecetaIntermedio({
+                num_receta: numReceta,
+                cantidad_e,
+                id_producto_intermedio: idProducto,
+                id_unidad_medida_e,
+                cantidad_a,
+                id_unidad_medida_a
+            }, transaction);
+            if (!idRiPi) {
+                throw new AppError('Ocurrio un error al crear la receta del producto intermedio.', 500);
+            }
+            await Repo.registrarLogRI(idRiPi, cantidad_e, id_unidad_medida_e, cantidad_a, id_unidad_medida_a, 1, idUsuario, fecha, 'INSERT', transaction);
+
+            // agregar producto a receta o receta intermedio
+            if (id_sub_categoria_2) {
+                let idReceta = await Repo.existeReceta(id_sub_categoria_2, transaction);
+                if (!idReceta) {
+                    idReceta = await Repo.crearReceta(nombre.toUpperCase(), id_sub_categoria_2, 1, transaction);
+                }
+                await Repo.crearProductoRecta(idReceta, 0, idProducto, 1, 1, id_unidad_medida_a, transaction);
+            }
+            if (id_planta_ri_pi) {
+                const numRecetaDestino = await Repo.getNumRecetaById(id_planta_ri_pi, transaction);
+                const nuevoIdProductoRI = await Repo.agregarProductoRI(id_planta_ri_pi, idProducto, 0, 1, id_unidad_medida_a, numRecetaDestino, transaction);
+                await Repo.registrarLogProductosRI(nuevoIdProductoRI, 1, id_unidad_medida_a, 1, idUsuario, fecha, 'INSERT', transaction);
+            }
+
+            await transaction.commit();
+            return { id_producto_intermedio: idProducto, id_planta_ri_pi: idRiPi, message: 'Se guardo correctamente la informacion.' };
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
 }
 
 module.exports = new RecetasIntermediasService();
