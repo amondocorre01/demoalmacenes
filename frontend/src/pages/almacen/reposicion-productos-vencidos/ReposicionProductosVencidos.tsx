@@ -44,6 +44,17 @@ interface PermissionCheck {
   reason?: string;
 }
 
+export interface EstadoFiltroItem {
+  id: number;
+  nombre: string;
+}
+
+export const ESTADOS_FILTRO: EstadoFiltroItem[] = [
+  { id: 0, nombre: 'TODOS' },
+  { id: 1, nombre: 'POR VENCIMIENTO' },
+  { id: 2, nombre: 'POR DESCUADRE' },
+];
+
 const ALL_WAREHOUSES_OPTION: AlmacenItem = {
   ID_PLANTA_ALMACEN: 0,
   DESCRICION: 'TODOS LOS ALMACENES',
@@ -142,7 +153,7 @@ export const ReposicionProductosVencidos: React.FC = () => {
   ]);
   const [startDate, setStartDate] = useState<Dayjs | null>(dayjs().startOf('month'));
   const [endDate, setEndDate] = useState<Dayjs | null>(dayjs().endOf('month'));
-  const [selectedEstado, setSelectedEstado] = useState<number>(0);
+  const [selectedEstado, setSelectedEstado] = useState<EstadoFiltroItem>(ESTADOS_FILTRO[0]);
 
   const [itemsList, setItemsList] = useState<DesperdicioItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -194,28 +205,31 @@ export const ReposicionProductosVencidos: React.FC = () => {
   // Consultar desperdicios (Solo cuando se presiona el botón Buscar)
   const handleFetchDesperdicios = useCallback(async () => {
     setIsLoading(true);
-    const fi = startDate ? startDate.format('YYYY-MM-DD') : '';
-    const ff = endDate ? endDate.format('YYYY-MM-DD') : '';
+    try {
+      const fi = startDate ? startDate.format('YYYY-MM-DD') : '';
+      const ff = endDate ? endDate.format('YYYY-MM-DD') : '';
 
-    // Si está seleccionado "TODOS LOS ALMACENES" o la lista está vacía, se envía un array vacío []
-    const isAll =
-      selectedWarehouses.length === 0 ||
-      selectedWarehouses.some((w) => w.ID_PLANTA_ALMACEN === 0);
+      // Si está seleccionado "TODOS LOS ALMACENES" o la lista está vacía, se envía un array vacío []
+      const isAll =
+        selectedWarehouses.length === 0 ||
+        selectedWarehouses.some((w) => w.ID_PLANTA_ALMACEN === 0);
 
-    const almacenesParam = isAll
-      ? []
-      : selectedWarehouses.map((w) => w.ID_PLANTA_ALMACEN);
+      const almacenesParam = isAll
+        ? []
+        : selectedWarehouses.map((w) => w.ID_PLANTA_ALMACEN);
 
-    const data = await loadApiGetDesperdicios({
-      almacenes: almacenesParam,
-      fecha_inicio: fi,
-      fecha_fin: ff,
-      id_estado: selectedEstado,
-    });
+      const data = await loadApiGetDesperdicios({
+        almacenes: almacenesParam,
+        fecha_inicio: fi,
+        fecha_fin: ff,
+        id_estado: selectedEstado?.id ?? 0,
+      });
 
-    setItemsList(data || []);
-    setPage(1);
-    setIsLoading(false);
+      setItemsList(data || []);
+      setPage(1);
+    } finally {
+      setIsLoading(false);
+    }
   }, [startDate, endDate, selectedWarehouses, selectedEstado]);
 
   // Asignar responsable directamente en la tabla
@@ -339,9 +353,36 @@ export const ReposicionProductosVencidos: React.FC = () => {
     }
   };
 
+  // Formato seguro de fecha y hora DD/MM/YYYY con HH:mm:ss
+  const formatDateTimeDisplay = (dateString?: string): { date: string; time: string } => {
+    if (!dateString) return { date: '-', time: '' };
+    try {
+      let datePart = '';
+      let timePart = '';
+
+      if (dateString.includes('T')) {
+        const [d, t] = dateString.split('T');
+        datePart = d;
+        timePart = t.replace('Z', '').split('.')[0];
+      } else if (dateString.includes(' ')) {
+        const [d, t] = dateString.split(' ');
+        datePart = d;
+        timePart = t.split('.')[0];
+      } else {
+        datePart = dateString;
+      }
+
+      const [year, month, day] = datePart.split('-');
+      const formattedDate = year && month && day ? `${day}/${month}/${year}` : datePart;
+      return { date: formattedDate, time: timePart };
+    } catch {
+      return { date: dateString, time: '' };
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full space-y-2 p-2 sm:p-0 animate-in fade-in duration-300">
-      <LoadingOverlay isLoading={isLoading} message="Cargando reposición de productos..." />
+      <LoadingOverlay show={isLoading} message="Cargando reposición de productos..." />
 
       {/* ── Encabezado Principal ── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-0">
@@ -485,18 +526,47 @@ export const ReposicionProductosVencidos: React.FC = () => {
               <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
                 Estado
               </label>
-              <select
+              <Autocomplete
+                options={ESTADOS_FILTRO}
+                getOptionLabel={(option) => option.nombre || ''}
                 value={selectedEstado}
-                onChange={(e) => {
-                  setSelectedEstado(Number(e.target.value));
+                onChange={(_, newValue) => {
+                  setSelectedEstado(newValue || ESTADOS_FILTRO[0]);
                   setItemsList([]);
                 }}
-                className="w-full h-[40px] px-3.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-[15px] text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none focus:border-primary transition-all cursor-pointer"
-              >
-                <option value={0}>TODOS LOS ESTADOS</option>
-                <option value={1}>CRÍTICA (VENCIDOS)</option>
-                <option value={2}>REGULAR</option>
-              </select>
+                isOptionEqualToValue={(option, value) => option.id === value?.id}
+                fullWidth
+                noOptionsText="No hay estados disponibles"
+                disableClearable
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '15px',
+                    backgroundColor: 'var(--input-bg, var(--surface))',
+                    color: 'var(--on-surface)',
+                    padding: '3px 8px',
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--outline-variant)',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--outline)',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--primary)',
+                    },
+                    '& .MuiSvgIcon-root': {
+                      color: 'var(--on-surface-variant)',
+                    },
+                  },
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    size="small"
+                    placeholder="SELECCIONAR ESTADO..."
+                  />
+                )}
+              />
             </div>
           </Grid>
 
@@ -526,19 +596,17 @@ export const ReposicionProductosVencidos: React.FC = () => {
               setPage(1);
             }}
             title="Ver todos los registros"
-            className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between shadow-sm select-none ${
-              kpiFilter === 'all'
-                ? 'bg-primary/5 dark:bg-primary/10 border-primary ring-2 ring-primary/30 shadow-md scale-[1.02]'
-                : 'bg-surface dark:bg-zinc-900 border-outline-variant dark:border-zinc-800 hover:border-primary/40 hover:scale-[1.01]'
-            }`}
+            className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between shadow-sm select-none ${kpiFilter === 'all'
+              ? 'bg-primary/5 dark:bg-primary/10 border-primary ring-2 ring-primary/30 shadow-md scale-[1.02]'
+              : 'bg-surface dark:bg-zinc-900 border-outline-variant dark:border-zinc-800 hover:border-primary/40 hover:scale-[1.01]'
+              }`}
           >
             <div className="flex items-center gap-3.5">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                  kpiFilter === 'all'
-                    ? 'bg-primary text-white shadow-md shadow-primary/20'
-                    : 'bg-primary/10 text-primary'
-                }`}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'all'
+                  ? 'bg-primary text-white shadow-md shadow-primary/20'
+                  : 'bg-primary/10 text-primary'
+                  }`}
               >
                 <span className="material-symbols-outlined text-xl">inventory_2</span>
               </div>
@@ -565,19 +633,17 @@ export const ReposicionProductosVencidos: React.FC = () => {
               setPage(1);
             }}
             title="Filtrar registros con responsable asignado"
-            className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between shadow-sm select-none ${
-              kpiFilter === 'assigned'
-                ? 'bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/30 shadow-md scale-[1.02]'
-                : 'bg-surface dark:bg-zinc-900 border-outline-variant dark:border-zinc-800 hover:border-emerald-500/40 hover:scale-[1.01]'
-            }`}
+            className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between shadow-sm select-none ${kpiFilter === 'assigned'
+              ? 'bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/30 shadow-md scale-[1.02]'
+              : 'bg-surface dark:bg-zinc-900 border-outline-variant dark:border-zinc-800 hover:border-emerald-500/40 hover:scale-[1.01]'
+              }`}
           >
             <div className="flex items-center gap-3.5">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                  kpiFilter === 'assigned'
-                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
-                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                }`}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'assigned'
+                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  }`}
               >
                 <span className="material-symbols-outlined text-xl">verified_user</span>
               </div>
@@ -604,19 +670,17 @@ export const ReposicionProductosVencidos: React.FC = () => {
               setPage(1);
             }}
             title="Filtrar registros pendientes sin responsable"
-            className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between shadow-sm select-none ${
-              kpiFilter === 'unassigned'
-                ? 'bg-rose-500/5 dark:bg-rose-500/10 border-rose-500 ring-2 ring-rose-500/30 shadow-md scale-[1.02]'
-                : 'bg-surface dark:bg-zinc-900 border-outline-variant dark:border-zinc-800 hover:border-rose-500/40 hover:scale-[1.01]'
-            }`}
+            className={`p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between shadow-sm select-none ${kpiFilter === 'unassigned'
+              ? 'bg-rose-500/5 dark:bg-rose-500/10 border-rose-500 ring-2 ring-rose-500/30 shadow-md scale-[1.02]'
+              : 'bg-surface dark:bg-zinc-900 border-outline-variant dark:border-zinc-800 hover:border-rose-500/40 hover:scale-[1.01]'
+              }`}
           >
             <div className="flex items-center gap-3.5">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                  kpiFilter === 'unassigned'
-                    ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
-                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                }`}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${kpiFilter === 'unassigned'
+                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+                  : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                  }`}
               >
                 <span className="material-symbols-outlined text-xl">person_alert</span>
               </div>
@@ -676,32 +740,51 @@ export const ReposicionProductosVencidos: React.FC = () => {
 
         {/* Tabla Compacta */}
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+          <table className="w-full text-left border-collapse min-w-[880px]">
             <thead>
               <tr className="bg-zinc-50/70 dark:bg-zinc-850/60 border-b border-zinc-100 dark:border-zinc-800">
-                <td className="pl-4 pr-2 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">N°</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Almacén</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Fecha Registro</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Fecha Vencimiento</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Producto</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">Cantidad</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Medida</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">P. Consumo Int.</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">Total Asumido</td>
-                <td className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Usuario Responsable</td>
-                <td className="px-3 pr-4 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">Acciones</td>
+                <td className="w-1 pl-4 pr-2 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">N°</td>
+                <td className="w-1 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">Almacén</td>
+                <td className="w-20 max-w-[150px] px-2 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Tipo
+                </td>
+                <td className="w-1 px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap leading-tight">
+                  <span>Fecha</span>
+                  <span className="block">Registro</span>
+                </td>
+                <td className="w-1 px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap leading-tight">
+                  <span>Fecha</span>
+                  <span className="block">Vencimiento</span>
+                </td>
+                <td className="w-48 max-w-[200px] px-2 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Producto
+                </td>
+                <td className="w-1 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">Cantidad</td>
+                <td className="w-1 px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap leading-tight">
+                  <span>P. Consumo</span>
+                  <span className="block">Int.</span>
+                </td>
+                <td className="w-1 px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap leading-tight">
+                  <span>Total</span>
+                  <span className="block">Asumido</span>
+                </td>
+                <td className="w-1 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap leading-tight">
+                  <span>Usuario</span>
+                  <span className="block">Responsable</span>
+                </td>
+                {/* <td className="w-1 px-3 pr-4 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">Acciones</td> */}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60 text-xs">
               {paginatedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-zinc-400 dark:text-zinc-500">
+                  <td colSpan={10} className="py-8 text-center text-zinc-400 dark:text-zinc-500">
                     <span className="material-symbols-outlined text-4xl block mb-1 text-zinc-300 dark:text-zinc-600">inventory_2</span>
                     <span className="text-xs font-bold uppercase tracking-wider">No se encontraron productos vencidos</span>
                   </td>
                 </tr>
               ) : (
-                paginatedItems.map((item, idx) => {
+                paginatedItems.map((item: any, idx) => {
                   const itemIndex = (page - 1) * pageSize + idx + 1;
                   const perm = controlarRestriccionFecha
                     ? checkEditResponsablePermission(item.FECHA_REGISTRO, userProfile)
@@ -709,47 +792,68 @@ export const ReposicionProductosVencidos: React.FC = () => {
                   const userName = item.USUARIO_ASUMIDO || item.USUARIO || '';
                   const hasResponsible = (item.ID_USUARIO_ASUMIDO && item.ID_USUARIO_ASUMIDO > 0) || (userName.trim() !== '' && userName !== 'Sin asignar');
                   const idDesp = item.ID_PLANTA_DESPERDICIO_ALMACEN || item.ID_DESPERDICIO_ALMACEN || item.ID_DESPERDICIO || idx;
-
-                  // Identificar ID del usuario seleccionado actualmente
-                  const currentSelectedUserId =
-                    item.ID_USUARIO_ASUMIDO ||
-                    (item.USUARIOS || []).find(
-                      (u) =>
-                        (u.NOMBRE_COMPLETO && u.NOMBRE_COMPLETO.toUpperCase() === (item.USUARIO_ASUMIDO || item.USUARIO || '').toUpperCase()) ||
-                        (u.USUARIO && u.USUARIO.toUpperCase() === (item.USUARIO_ASUMIDO || item.USUARIO || '').toUpperCase())
-                    )?.ID_USUARIO ||
-                    '';
+                  const regDateTime = formatDateTimeDisplay(item.FECHA_REGISTRO);
+                  const productName = item.PRODUCTO || item.NOMBRE_PRODUCTO || (item.NOMBRE_DETALLE ? item.NOMBRE_DETALLE : '-');
+                  const hasDetailSubtitle = Boolean(
+                    item.NOMBRE_DETALLE &&
+                    item.NOMBRE_DETALLE.trim() !== '' &&
+                    item.NOMBRE_DETALLE.trim().toUpperCase() !== (item.PRODUCTO || item.NOMBRE_PRODUCTO || '').trim().toUpperCase()
+                  );
 
                   return (
                     <tr
                       key={idDesp}
                       className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors group"
                     >
-                      <td className="pl-4 pr-2 py-1.5 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                      <td className="w-1 pl-4 pr-2 py-1.5 font-black text-xs text-primary tracking-tight whitespace-nowrap">
                         {itemIndex}
                       </td>
-                      <td className="px-3 py-1.5 font-semibold text-zinc-700 dark:text-zinc-300 uppercase whitespace-nowrap">
+                      <td className="w-1 px-3 py-1.5 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 uppercase whitespace-nowrap">
                         {item.ALMACEN || item.DESCRICION || '-'}
                       </td>
-                      <td className="px-3 py-1.5 font-mono text-zinc-600 dark:text-zinc-400 whitespace-nowrap text-[11px]">
-                        {formatDateDisplay(item.FECHA_REGISTRO)}
+                      <td className="w-20 max-w-[150px] px-2 py-1.5 uppercase">
+                        <span className="block text-[10px] font-bold text-zinc-900 dark:text-zinc-100 leading-tight">
+                          {item.DESCRIPCION_ESTADO}
+                        </span>
                       </td>
-                      <td className="px-3 py-1.5 font-mono font-bold text-primary whitespace-nowrap text-[11px]">
+                      <td className="w-1 px-2 py-1.5 whitespace-nowrap">
+                        <span className="block text-[10px] font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                          {regDateTime.date}
+                        </span>
+                        {regDateTime.time ? (
+                          <span className="block font-mono text-[9px] text-zinc-400 dark:text-zinc-500 font-bold leading-tight">
+                            {regDateTime.time}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="w-1 px-2 py-1.5 font-mono font-bold text-primary whitespace-nowrap text-[10px]">
                         {formatDateDisplay(item.FECHA_VENCIMIENTO)}
                       </td>
-                      <td className="px-3 py-1.5 font-bold text-zinc-900 dark:text-zinc-100 uppercase">
-                        {item.PRODUCTO || item.NOMBRE_PRODUCTO || item.NOMBRE_DETALLE || '-'}
+                      <td className="w-48 max-w-[200px] px-2 py-1.5 uppercase">
+                        <span className="block text-[10px] font-bold text-zinc-900 dark:text-zinc-100 leading-tight">
+                          {item.NOMBRE_DETALLE}
+                        </span>
+                        <span className="block text-[9px] font-bold text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">
+                          {productName}
+                        </span>
+                        {/* {hasDetailSubtitle && (
+                          <span className="block text-[9px] font-bold text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">
+                            {productName}
+                          </span>
+                        )} */}
                       </td>
-                      <td className="px-3 py-1.5 font-bold text-center text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
-                        {Number(item.CANTIDAD || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td className="w-1 px-2 py-1.5 text-center whitespace-nowrap">
+                        <span className="block font-bold text-zinc-800 dark:text-zinc-200 text-[10px]">
+                          {Number(item.CANTIDAD || 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="block text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-semibold text-[10px] leading-tight mt-0.5">
+                          {item.UNIDAD_MEDIDA || item.MEDIDA || '-'}
+                        </span>
                       </td>
-                      <td className="px-3 py-1.5 text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-semibold text-[10px] whitespace-nowrap">
-                        {item.UNIDAD_MEDIDA || item.MEDIDA || '-'}
-                      </td>
-                      <td className="px-3 py-1.5 font-bold text-right text-zinc-700 dark:text-zinc-300 whitespace-nowrap">
+                      <td className="w-1 px-2 py-1.5 font-bold text-right text-zinc-700 dark:text-zinc-300 whitespace-nowrap text-[11px]">
                         Bs. {Number(item.PRECIO_PRODUCTO ?? item.PRECIO ?? 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td className="px-3 py-1.5 font-black text-right text-zinc-900 dark:text-zinc-100 whitespace-nowrap">
+                      <td className="w-1 px-2 py-1.5 font-black text-right text-zinc-900 dark:text-zinc-100 whitespace-nowrap text-[11px]">
                         Bs. {Number(item.PRECIO_ASUMIDO_EMPLEADO ?? item.TOTAL ?? 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-3 py-1">
@@ -817,6 +921,17 @@ export const ReposicionProductosVencidos: React.FC = () => {
                                 placeholder="SELECCIONAR RESPONSABLE..."
                               />
                             )}
+                            renderOption={(props, option) => (
+                              <li
+                                {...props}
+                                key={option.ID_USUARIO}
+                                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer flex flex-col items-start border-b border-zinc-100 dark:border-zinc-800 text-xs"
+                              >
+                                <span className="font-bold text-zinc-900 dark:text-zinc-100 uppercase">
+                                  {option.NOMBRE_COMPLETO}
+                                </span>
+                              </li>
+                            )}
                           />
                           {isAssigningId === Number(idDesp) && (
                             <div className="absolute right-9 top-1/2 -translate-y-1/2 flex items-center z-10 pointer-events-none">
@@ -825,16 +940,16 @@ export const ReposicionProductosVencidos: React.FC = () => {
                               </span>
                             </div>
                           )}
-                          {!perm.allowed && (
+                          {/* {!perm.allowed && (
                             <Tooltip title={perm.reason || 'Edición restringida por fecha'} arrow>
                               <div className="absolute right-9 top-1/2 -translate-y-1/2 flex items-center cursor-not-allowed text-zinc-400 z-10">
                                 <span className="material-symbols-outlined text-xs">lock</span>
                               </div>
                             </Tooltip>
-                          )}
+                          )} */}
                         </div>
                       </td>
-                      <td className="px-3 pr-4 py-1.5 text-center whitespace-nowrap">
+                      {/* <td className="px-3 pr-4 py-1.5 text-center whitespace-nowrap">
                         {perm.allowed ? (
                           <Tooltip title={hasResponsible ? "Modificar Responsable en Modal" : "Asignar Responsable en Modal"} arrow>
                             <button
@@ -860,7 +975,7 @@ export const ReposicionProductosVencidos: React.FC = () => {
                             </span>
                           </Tooltip>
                         )}
-                      </td>
+                      </td> */}
                     </tr>
                   );
                 })
@@ -871,7 +986,7 @@ export const ReposicionProductosVencidos: React.FC = () => {
 
         {/* Table Footer / Pagination */}
         {!isLoading && itemsList.length > 0 && (
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 border-t border-zinc-100 dark:border-zinc-800/80">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-2 border-t border-zinc-100 dark:border-zinc-800/80">
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">

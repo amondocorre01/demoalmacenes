@@ -102,16 +102,28 @@ export const ModalAsignarResponsable: React.FC<ModalAsignarResponsableProps> = (
   };
 
   const formattedFechaRegistro = React.useMemo(() => {
-    if (!item?.FECHA_REGISTRO) return '-';
+    if (!item?.FECHA_REGISTRO) return { date: '-', time: '' };
     try {
-      const clean = item.FECHA_REGISTRO.split('T')[0];
-      const parts = clean.split(' ')[0].split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      let datePart = '';
+      let timePart = '';
+
+      if (item.FECHA_REGISTRO.includes('T')) {
+        const [d, t] = item.FECHA_REGISTRO.split('T');
+        datePart = d;
+        timePart = t.replace('Z', '').split('.')[0];
+      } else if (item.FECHA_REGISTRO.includes(' ')) {
+        const [d, t] = item.FECHA_REGISTRO.split(' ');
+        datePart = d;
+        timePart = t.split('.')[0];
+      } else {
+        datePart = item.FECHA_REGISTRO;
       }
-      return item.FECHA_REGISTRO;
+
+      const parts = datePart.split('-');
+      const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : datePart;
+      return { date: formatted, time: timePart };
     } catch {
-      return item.FECHA_REGISTRO;
+      return { date: item.FECHA_REGISTRO, time: '' };
     }
   }, [item?.FECHA_REGISTRO]);
 
@@ -128,6 +140,13 @@ export const ModalAsignarResponsable: React.FC<ModalAsignarResponsableProps> = (
       return item.FECHA_VENCIMIENTO;
     }
   }, [item?.FECHA_VENCIMIENTO]);
+
+  const productName = item?.PRODUCTO || item?.NOMBRE_PRODUCTO || (item?.NOMBRE_DETALLE ? item.NOMBRE_DETALLE : '-');
+  const hasDetailSubtitle = Boolean(
+    item?.NOMBRE_DETALLE &&
+    item.NOMBRE_DETALLE.trim() !== '' &&
+    item.NOMBRE_DETALLE.trim().toUpperCase() !== (item?.PRODUCTO || item?.NOMBRE_PRODUCTO || '').trim().toUpperCase()
+  );
 
   return (
     <Dialog
@@ -212,9 +231,14 @@ export const ModalAsignarResponsable: React.FC<ModalAsignarResponsableProps> = (
                 <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase block">
                   Producto
                 </span>
-                <span className="font-black text-zinc-900 dark:text-zinc-100 uppercase">
-                  {item?.PRODUCTO || item?.NOMBRE_PRODUCTO || item?.NOMBRE_DETALLE || '-'}
+                <span className="font-black text-zinc-900 dark:text-zinc-100 uppercase block leading-tight">
+                  {productName}
                 </span>
+                {hasDetailSubtitle && (
+                  <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 block mt-0.5 leading-tight">
+                    {item?.NOMBRE_DETALLE}
+                  </span>
+                )}
               </div>
 
               <div>
@@ -230,9 +254,14 @@ export const ModalAsignarResponsable: React.FC<ModalAsignarResponsableProps> = (
                 <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase block">
                   Fecha Registro
                 </span>
-                <span className="font-mono font-bold text-zinc-700 dark:text-zinc-300">
-                  {formattedFechaRegistro}
+                <span className="font-mono font-bold text-zinc-700 dark:text-zinc-300 block">
+                  {formattedFechaRegistro.date}
                 </span>
+                {formattedFechaRegistro.time && (
+                  <span className="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 font-bold block">
+                    {formattedFechaRegistro.time}
+                  </span>
+                )}
               </div>
 
               <div>
