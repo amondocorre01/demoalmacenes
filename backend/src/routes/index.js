@@ -17,6 +17,7 @@ const modules = [
     { path: '/notify', routes: require('../modules/notificacion/notificacion.cross-system.routes') },
     { path: '/pedidos-sucursal', routes: require('../modules/pedidos-sucursal/consolidados.routes') },
     { path: '/pedido-almacen', routes: require('../modules/pedido-almacen/pedido-almacen.routes') },
+    { path: '/reposicion', routes: require('../modules/reposicion-alamcen/reposicion-alamcen.routes') },
 ];
 
 router.get('/', (req, res) => {
