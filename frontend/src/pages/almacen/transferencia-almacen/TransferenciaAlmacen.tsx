@@ -1,335 +1,637 @@
-import React, { useState } from 'react';
-import { 
-  Autocomplete, 
-  TextField, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  IconButton,
-  Snackbar,
-  Alert,
+/**
+ * TransferenciaAlmacen.tsx
+ * 
+ * 1. Propósito de la vista:
+ *    Gestión, control y registro de movimientos de transferencia de Productos Intermedios
+ *    entre los distintos almacenes de la planta. Permite consultar el historial de operaciones
+ *    filtradas por almacén y rango de fechas, validar el stock disponible en tiempo real
+ *    y registrar transferencias con salida del almacén origen y entrada automática en destino.
+ * 
+ * 2. APIs Utilizadas:
+ *    - GET /v1/transferencia/usuarios/almacenes (loadApiGetAlmacenesUsuario - Almacenes autorizados)
+ *    - GET /v1/transferencia/almacenes-activos (loadApiGetAlmacenesActivos - Catálogo de almacenes destino)
+ *    - GET /v1/transferencia/pi/transferencias (loadApiGetTransferenciasPI - Historial de transferencias)
+ *    - GET /v1/transferencia/pi/stock (loadApiGetStockPI - Stock de productos intermedios por almacén)
+ *    - POST /v1/transferencia/registrar-transferencia (loadApiRegistrarTransferencia - Registrar transferencia)
+ * 
+ * 3. Controles Clave:
+ *    - Tabla unificada compacta y responsiva según el estándar oficial de AGENTS.md.
+ *    - Buscador tipo píldora en la cabecera superior derecha de la tabla.
+ *    - Filtro compuesto por almacén y rango de fechas con botón estandarizado de búsqueda con icono.
+ *    - Paginación dinámica con selector de filas por página (5, 10, 20, 50).
+ *    - Botones de acción tipo icono estandarizados con paleta corporativa para ver detalle.
+ *    - Modales ubicados en components/ (ModalNuevaTransferencia y ModalDetalleTransferencia).
+ *    - Formato de fechas DD/MM/YYYY sin desfase de zona horaria.
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Autocomplete,
+  TextField,
   useTheme,
   useMediaQuery,
-  Divider
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
+import { Button } from '../../../components/common/Button';
+import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import {
+  useTransferenciaAlmacenServices,
+  TransferenciaItem,
+} from './services/useTransferenciaAlmacen';
+import { ModalNuevaTransferencia } from './components/ModalNuevaTransferencia';
+import { ModalDetalleTransferencia } from './components/ModalDetalleTransferencia';
 
-interface TransferItem {
-  id: number;
-  name: string;
-  unit: string;
-  stock: number;
-  qty: string | number;
-}
-
-const availableWarehouses = ['Supervision', 'Pies', 'Frutas', 'Bizcochos', 'Tortas'];
-const availableProductsList = [
-  { name: 'CHISPAS DE CHOCOLATE', unit: 'Kilogramos', stock: 50 },
-  { name: 'HARINA DE TRIGO 000', unit: 'Bolsas', stock: 120 },
-  { name: 'MANTEQUILLA CON SAL', unit: 'Unidades', stock: 85 },
-  { name: 'AZUCAR IMPALPABLE', unit: 'Kilogramos', stock: 40 },
-  { name: 'ESENCIA DE VAINILLA', unit: 'Litros', stock: 15 },
-];
-
-const TransferenciaAlmacen: React.FC = () => {
+export const TransferenciaAlmacen: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const [startDate, setStartDate] = useState<Dayjs | null>(dayjs());
+  const {
+    loadApiGetAlmacenesUsuario,
+    loadApiGetAlmacenesActivos,
+    loadApiGetTransferenciasPI,
+  } = useTransferenciaAlmacenServices();
+
+  // Estados principales
+  const [transfersList, setTransfersList] = useState<TransferenciaItem[]>([]);
+  const [userWarehouses, setUserWarehouses] = useState<any[]>([]);
+  const [allWarehouses, setAllWarehouses] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Filtros superiores
+  const [selectedWarehouse, setSelectedWarehouse] = useState<any | null>(null);
+  const [startDate, setStartDate] = useState<Dayjs | null>(dayjs().startOf('month'));
   const [endDate, setEndDate] = useState<Dayjs | null>(dayjs());
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
-  // Modal State
-  const [sourceWarehouse, setSourceWarehouse] = useState<string | null>(null);
-  const [targetWarehouse, setTargetWarehouse] = useState<string | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-  const [transferItems, setTransferItems] = useState<TransferItem[]>([]);
+  // Búsqueda en tabla y paginación
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  const history = [
-    { date: '2025-01-16 17:19:20', operation: 'Enviado', warehouse: 'SUPERVISIÓN', status: 'Aceptado(En Stock)', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { date: '2025-01-16 17:19:20', operation: 'Enviado', warehouse: 'PANADERIA', status: 'Aceptado(En Stock)', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { date: '2025-01-16 17:19:20', operation: 'Enviado', warehouse: 'TORTAS', status: 'Aceptado(En Stock)', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { date: '2025-01-16 17:19:20', operation: 'Enviado', warehouse: 'GALLETA', status: 'Aceptado(En Stock)', statusColor: 'bg-emerald-100 text-emerald-700' },
-  ];
+  // Modales
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [viewingTransfer, setViewingTransfer] = useState<TransferenciaItem | null>(null);
 
-  const handleAddProduct = (product: any) => {
-    if (!product) return;
-    if (transferItems.find(item => item.name === product.name)) {
-      setSnackbar({ open: true, message: 'El producto ya está en la lista', severity: 'error' });
-      return;
-    }
-    setTransferItems(prev => [
-      ...prev,
-      { id: Date.now(), name: product.name, unit: product.unit, stock: product.stock, qty: '' }
+  // Cargar catálogos iniciales
+  const fetchInitialData = async () => {
+    setIsLoading(true);
+    const [userWhRes, allWhRes] = await Promise.all([
+      loadApiGetAlmacenesUsuario(),
+      loadApiGetAlmacenesActivos(),
     ]);
-    setSelectedProduct(null);
-  };
 
-  const handleQtyChange = (id: number, value: string) => {
-    const qty = parseFloat(value) || 0;
-    const item = transferItems.find(i => i.id === id);
-    if (item && qty > item.stock) {
-      setTransferItems(prev => prev.map(i => i.id === id ? { ...i, qty: item.stock.toString() } : i));
-      setSnackbar({ open: true, message: `La cantidad no puede superar el stock disponible (${item.stock})`, severity: 'error' });
-    } else {
-      setTransferItems(prev => prev.map(i => i.id === id ? { ...i, qty: value } : i));
+    let loadedUserWh: any[] = [];
+    if (userWhRes && userWhRes.success && Array.isArray(userWhRes.data)) {
+      loadedUserWh = userWhRes.data;
+    } else if (Array.isArray(userWhRes)) {
+      loadedUserWh = userWhRes;
     }
+    setUserWarehouses(loadedUserWh);
+
+    let loadedAllWh: any[] = [];
+    if (allWhRes && allWhRes.success && Array.isArray(allWhRes.data)) {
+      loadedAllWh = allWhRes.data;
+    } else if (Array.isArray(allWhRes)) {
+      loadedAllWh = allWhRes;
+    }
+    setAllWarehouses(loadedAllWh);
+
+    const initialWh = loadedUserWh.length > 0 ? loadedUserWh[0] : null;
+    setSelectedWarehouse(initialWh);
+
+    if (initialWh) {
+      await fetchTransferencias(initialWh);
+    }
+    setIsLoading(false);
   };
 
-  const handleRemoveItem = (id: number) => {
-    setTransferItems(prev => prev.filter(i => i.id !== id));
-  };
-
-  const handleSaveTransfer = () => {
-    if (!sourceWarehouse || !targetWarehouse || transferItems.length === 0) {
-      setSnackbar({ open: true, message: 'Complete todos los datos y añada productos', severity: 'error' });
+  const fetchTransferencias = async (wh = selectedWarehouse) => {
+    if (!wh?.ID_PLANTA_ALMACEN) {
+      setTransfersList([]);
       return;
     }
-    if (sourceWarehouse === targetWarehouse) {
-      setSnackbar({ open: true, message: 'El almacén de origen y destino no pueden ser iguales', severity: 'error' });
-      return;
+    setIsLoading(true);
+    try {
+      const fechaInicioStr = startDate && startDate.isValid() ? startDate.format('YYYY-MM-DD') : '';
+      const fechaFinStr = endDate && endDate.isValid() ? endDate.format('YYYY-MM-DD') : '';
+
+      const res = await loadApiGetTransferenciasPI({
+        id_planta_almacen: wh.ID_PLANTA_ALMACEN,
+        fecha_inicio: fechaInicioStr,
+        fecha_fin: fechaFinStr,
+      });
+
+      if (res && res.success && Array.isArray(res.data)) {
+        setTransfersList(res.data);
+      } else if (Array.isArray(res)) {
+        setTransfersList(res);
+      } else {
+        setTransfersList([]);
+      }
+      setPage(1);
+    } catch (err) {
+      setTransfersList([]);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setSnackbar({ open: true, message: 'Transferencia registrada con éxito', severity: 'success' });
-    setIsModalOpen(false);
-    setTransferItems([]);
-    setSourceWarehouse(null);
-    setTargetWarehouse(null);
+  };
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
+
+  const formatDateDisplay = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
+    const [year, month, day] = clean.split('-');
+    if (!year || !month || !day) return dateStr;
+    return `${day}/${month}/${year}`;
+  };
+
+  const formatTimeDisplay = (dateStr?: string, fallbackHour?: string) => {
+    const target = (dateStr && (dateStr.includes('T') || dateStr.includes(' '))) ? dateStr : fallbackHour;
+    if (!target) return '';
+    if (target.includes('T')) {
+      const timePart = target.split('T')[1];
+      return timePart.split('.')[0].replace('Z', '');
+    }
+    if (target.includes(' ')) {
+      return target.split(' ')[1].split('.')[0];
+    }
+    if (target.includes(':')) {
+      return target.split('.')[0];
+    }
+    return '';
+  };
+
+  const renderEstadoBadge = (estado?: number | string) => {
+    const estadoNum = Number(estado);
+    if (estadoNum === 4) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+          TRANSFERIDO
+        </span>
+      );
+    }
+    if (estadoNum === 3) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+          EN CAMINO
+        </span>
+      );
+    }
+    if (estadoNum === 1) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+          STOCK
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+        {estado ? `ESTADO ${estado}` : '-'}
+      </span>
+    );
+  };
+
+  const renderOperacionBadge = (envio?: number | string) => {
+    const envioNum = Number(envio);
+    if (envioNum === 0) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+          Recibido
+        </span>
+      );
+    }
+    if (envioNum === 1) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 border border-sky-200 dark:border-sky-800">
+          Enviado
+        </span>
+      );
+    }
+    if (envioNum === 2) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+          En Camino
+        </span>
+      );
+    }
+    if (envioNum === 3) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+          Rechazado
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+        -
+      </span>
+    );
+  };
+
+  // Filtrado por buscador tipo píldora
+  const filteredTransfers = useMemo(() => {
+    if (!searchTerm.trim()) return transfersList;
+    const query = searchTerm.toLowerCase().trim();
+
+    return transfersList.filter((item) => {
+      const origen = (item.ORIGEN || item.ALMACEN_ORIGEN || '').toLowerCase();
+      const destino = (item.DESTINO || item.ALMACEN_DESTINO || '').toLowerCase();
+      const user = (item.USUARIO || item.NOMBRE_USUARIO || '').toLowerCase();
+      const id = String(item.ID_DOCUMENTO_TRANSFERENCIA || '');
+
+      return (
+        origen.includes(query) ||
+        destino.includes(query) ||
+        user.includes(query) ||
+        id.includes(query)
+      );
+    });
+  }, [transfersList, searchTerm]);
+
+  // Paginación
+  const totalItems = filteredTransfers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const paginatedTransfers = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredTransfers.slice(start, start + pageSize);
+  }, [filteredTransfers, page, pageSize]);
+
+  const handleOpenDetail = (item: TransferenciaItem) => {
+    setViewingTransfer(item);
+    setIsDetailModalOpen(true);
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-10 px-6 sm:px-8 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
+    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
+      <LoadingOverlay show={isLoading} message="Cargando transferencias de productos intermedios..." />
+
+      {/* ── Cabecera Principal Estandarizada (AGENTS.md) ── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-1">
         <div>
-          <p className="text-4xl font-black tracking-tighter text-zinc-900 uppercase leading-none">Transferencia de Stock</p>
-          <p className="text-zinc-400 font-bold uppercase text-xs tracking-widest mt-2">Mueva insumos de manera eficiente entre sus puntos de control internos.</p>
+          <h1 className="text-2xl font-bold text-on-background uppercase font-headline">
+            Transferencia de Productos Intermedios
+          </h1>
+          <p className="text-[10px] font-black text-on-surface-variant mt-1 font-body">
+            Movimiento y distribución de bases, masas y concentrados entre almacenes de planta.
+          </p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-zinc-900 text-white h-14 px-10 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] flex items-center gap-3 shadow-2xl shadow-zinc-900/20 hover:bg-primary transition-all active:scale-[0.98]"
+
+        <Button
+          variant="primary"
+          size="sm"
+          icon="sync_alt"
+          onClick={() => setIsNewModalOpen(true)}
+          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
         >
-          <span className="material-symbols-outlined text-lg">sync_alt</span>
-          REGISTRAR TRANSFERENCIA
-        </button>
+          Registrar Transferencia
+        </Button>
       </div>
 
-      {/* Filters Section */}
-      <div className="mb-10 bg-white border border-zinc-100 rounded-[2.5rem] p-8 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div>
-            <label className="block text-[10px] font-black text-zinc-400 tracking-widest uppercase mb-2 ml-1">Filtro Almacén</label>
+      {/* ── Selector de Almacén y Fechas Estandarizado (AGENTS.md) ── */}
+      <div className="flex flex-col lg:flex-row items-stretch gap-4 mb-2">
+        <div className="flex bg-surface p-3.5 rounded-2xl border border-outline-variant shadow-sm gap-3 items-end flex-col sm:flex-row flex-1">
+          {/* Selector de Almacén */}
+          <div className="w-full sm:flex-1 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Seleccionar Almacén Origen
+            </label>
             <Autocomplete
-              options={availableWarehouses}
-              renderInput={(params) => <TextField {...params} size="small" placeholder="Todos los almacenes" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '16px', bgcolor: 'zinc.50/30' } }} />}
+              options={userWarehouses}
+              getOptionLabel={(option) => option.DESCRICION || option.nombre || ''}
+              value={selectedWarehouse}
+              onChange={(_, newValue) => {
+                setSelectedWarehouse(newValue);
+                setTransfersList([]);
+              }}
+              isOptionEqualToValue={(option, value) => option.ID_PLANTA_ALMACEN === value?.ID_PLANTA_ALMACEN}
+              fullWidth
+              noOptionsText="No hay almacenes disponibles"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '15px',
+                  backgroundColor: 'var(--input-bg, var(--surface))',
+                  color: 'var(--on-surface)',
+                  padding: '3px 8px',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--outline-variant)',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--outline)',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'var(--primary)',
+                  },
+                  '& .MuiSvgIcon-root': {
+                    color: 'var(--on-surface-variant)',
+                  }
+                }
+              }}
+              renderInput={(params) => (
+                <TextField {...params} variant="outlined" size="small" placeholder="SELECCIONAR ALMACÉN..." />
+              )}
             />
           </div>
-          <div>
-            <label className="block text-[10px] font-black text-zinc-400 tracking-widest uppercase mb-2 ml-1">Fecha Inicio</label>
+
+          {/* Fecha Inicio */}
+          <div className="w-full sm:w-48 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Fecha Inicio
+            </label>
             <DatePicker
               value={startDate}
-              onChange={(v) => setStartDate(v)}
-              slotProps={{ textField: { size: 'small', fullWidth: true, sx: { '& .MuiOutlinedInput-root': { borderRadius: '16px', bgcolor: 'zinc.50/30' } } } }}
+              onChange={(v) => {
+                setStartDate(v);
+                setTransfersList([]);
+              }}
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: {
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      }
+                    }
+                  }
+                }
+              }}
             />
           </div>
-          <div>
-            <label className="block text-[10px] font-black text-zinc-400 tracking-widest uppercase mb-2 ml-1">Fecha Fin</label>
+
+          {/* Fecha Fin */}
+          <div className="w-full sm:w-48 space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+              Fecha Fin
+            </label>
             <DatePicker
               value={endDate}
-              onChange={(v) => setEndDate(v)}
-              slotProps={{ textField: { size: 'small', fullWidth: true, sx: { '& .MuiOutlinedInput-root': { borderRadius: '16px', bgcolor: 'zinc.50/30' } } } }}
+              onChange={(v) => {
+                setEndDate(v);
+                setTransfersList([]);
+              }}
+              slotProps={{
+                textField: {
+                  size: 'small',
+                  fullWidth: true,
+                  sx: {
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      }
+                    }
+                  }
+                }
+              }}
             />
           </div>
+
+          {/* Botón Buscar Exacto */}
+          <button
+            type="button"
+            onClick={() => fetchTransferencias(selectedWarehouse)}
+            title="Buscar Transferencias"
+            className="w-10 h-10 rounded-2xl bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0 shadow-inner"
+          >
+            <span className="material-symbols-outlined text-2xl font-bold">search</span>
+          </button>
         </div>
       </div>
 
-      {/* Table Section */}
-      <div className="bg-white border border-zinc-100 rounded-[3rem] overflow-hidden shadow-sm">
-        <div className="p-8 md:p-10 border-b border-zinc-50 bg-zinc-50/20">
-          <p className="text-xs font-black text-zinc-800 uppercase tracking-[0.2em]">Historial de Operaciones</p>
+      {/* ── Main Data Canvas (Tabla Unificada) ── */}
+      <div className="bg-surface rounded-[1rem] border border-outline-variant shadow-sm overflow-hidden mb-4">
+        {/* Cabecera Superior de la Tabla */}
+        <div className="p-3 sm:p-4 border-b border-outline-variant flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-surface-variant/20">
+          <div>
+            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest font-headline">
+              Historial de Transferencias
+            </p>
+            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-wider">
+              Total encontrados: {totalItems} movimientos
+            </p>
+          </div>
+
+          {/* Buscador de Tabla Interno tipo píldora */}
+          <div className="relative group w-full sm:w-64">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              placeholder="BUSCAR..."
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2 px-4 pl-9 text-[10px] font-black text-zinc-900 dark:text-zinc-150 transition-all uppercase tracking-widest focus:outline-none focus:ring-4 focus:ring-primary/10"
+            />
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm pointer-events-none">
+              search
+            </span>
+          </div>
         </div>
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-100">
-          <table className="w-full text-left min-w-[1000px]">
+
+        {/* Tabla */}
+        <div className="overflow-x-auto w-full scrollbar-thin">
+          <table className="w-full text-left border-collapse min-w-[950px]">
             <thead>
-              <tr className="bg-zinc-50/50 text-[10px] font-black text-zinc-400 tracking-[0.3em] uppercase">
-                <td className="px-10 py-6">Fecha Registro</td>
-                <td className="px-8 py-6">Operación</td>
-                <td className="px-8 py-6">Almacén</td>
-                <td className="px-8 py-6">Estado</td>
-                <td className="px-10 py-6 text-right">Acciones</td>
+              <tr className="bg-zinc-50/50 dark:bg-zinc-850/40 border-b border-outline-variant">
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                  N°
+                </td>
+                <td className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Fecha / Hora
+                </td>
+                {/* <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Almacén Origen
+                </td> */}
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Almacén Destino
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                  Usuario
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center">
+                  Operación
+                </td>
+                <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center">
+                  Estado
+                </td>
+                <td className="pr-6 pl-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
+                  Acciones
+                </td>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-50 text-sm">
-              {history.map((item, idx) => (
-                <tr key={idx} className="hover:bg-zinc-50/30 transition-all group">
-                  <td className="px-10 py-6 font-black text-zinc-900 uppercase tracking-tighter text-xs">{item.date}</td>
-                  <td className="px-8 py-6 font-bold text-zinc-500 uppercase text-[11px] tracking-tight">{item.operation}</td>
-                  <td className="px-8 py-6 font-black text-zinc-400 uppercase tracking-widest text-[11px]">{item.warehouse}</td>
-                  <td className="px-8 py-6">
-                    <span className={`px-4 py-1 text-[9px] font-black rounded-full uppercase tracking-widest shadow-sm ${item.statusColor}`}>
-                      {item.status}
+            <tbody className="divide-y divide-zinc-50 dark:divide-zinc-850">
+              {paginatedTransfers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-zinc-400 dark:text-zinc-500">
+                    <span className="material-symbols-outlined text-4xl mb-2 block opacity-40">
+                      sync_alt
                     </span>
-                  </td>
-                  <td className="px-10 py-6 text-right">
-                    <IconButton size="small" className="text-zinc-200 hover:text-zinc-900 transition-colors">
-                      <span className="material-symbols-outlined text-lg">visibility</span>
-                    </IconButton>
+                    <p className="text-xs font-black uppercase tracking-wider">
+                      No se encontraron transferencias registradas
+                    </p>
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase mt-1">
+                      Seleccione un almacén origen y consulte el rango de fechas.
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginatedTransfers.map((item, idx) => {
+                  const itemNumber = (page - 1) * pageSize + idx + 1;
+                  return (
+                    <tr
+                      key={item.ID_DOCUMENTO_TRANSFERENCIA || idx}
+                      className="hover:bg-zinc-50/30 dark:hover:bg-zinc-850/30 transition-colors group"
+                    >
+                      <td className="pl-6 pr-2 py-1 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                        <span>{itemNumber}</span>
+                      </td>
+                      <td className="pl-6 pr-2 py-1 whitespace-nowrap">
+                        <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase">
+                          {formatDateDisplay(item.FECHA_REGISTRO)}
+                        </span>
+                        {formatTimeDisplay(item.FECHA_REGISTRO, item.HORA_REGISTRO) && (
+                          <span className="text-[10px] text-zinc-400 dark:text-zinc-500 block">
+                            {formatTimeDisplay(item.FECHA_REGISTRO, item.HORA_REGISTRO)}
+                          </span>
+                        )}
+                      </td>
+                      {/* <td className="px-4 py-1">
+                        <span className="font-black text-xs text-on-surface uppercase tracking-tight">
+                          {item.ORIGEN || item.ALMACEN_ORIGEN || '-'}
+                        </span>
+                      </td> */}
+                      <td className="px-4 py-1">
+                        <span className="font-black text-xs text-primary uppercase tracking-tight">
+                          {item.DESTINO || item.ALMACEN_DESTINO || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-1">
+                        <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 uppercase">
+                          {item.USUARIO || item.NOMBRE_USUARIO || '-'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-1 text-center">
+                        {renderOperacionBadge(item.ENVIO)}
+                      </td>
+                      <td className="px-4 py-1 text-center">
+                        {renderEstadoBadge(item.ESTADO)}
+                      </td>
+                      <td className="pr-6 pl-4 py-1 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Botón Ver Detalle */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDetail(item)}
+                            title="Ver Detalle de Transferencia"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[14px] sm:text-base">
+                              visibility
+                            </span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* ── Paginación Estándar Inferior ── */}
+        {!isLoading && transfersList.length > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 border-t border-zinc-100 dark:border-zinc-800/80">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                  Mostrar:
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 text-[10px] font-black uppercase text-zinc-600 dark:text-zinc-350 px-2.5 outline-none shadow-sm cursor-pointer"
+                >
+                  <option value={5}>5 filas</option>
+                  <option value={10}>10 filas</option>
+                  <option value={20}>20 filas</option>
+                  <option value={50}>50 filas</option>
+                </select>
+              </div>
+              <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                Mostrando {totalItems > 0 ? (page - 1) * pageSize + 1 : 0}-
+                {Math.min(page * pageSize, totalItems)} de {totalItems} registros
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_left</span>
+              </button>
+              <span className="text-[10px] font-black uppercase text-zinc-550 dark:text-zinc-400 px-2">
+                Página {page} de {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                disabled={page === totalPages}
+                className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm font-black">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Register Transfer Modal */}
-      <Dialog
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        fullScreen={isMobile}
-        slotProps={{ paper: { sx: { borderRadius: isMobile ? 0 : '2.5rem', p: 0.5, bgcolor: 'zinc.50/50' } } }}
-      >
-        <DialogTitle sx={{ p: 2, px: 4, bgcolor: 'white', borderBottom: '1px solid', borderColor: 'zinc-50' }}>
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center shadow-lg">
-                <span className="material-symbols-outlined text-xl">move_up</span>
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-primary uppercase tracking-[0.2em]">Operación de Almacén</p>
-                <p className="text-xl font-black text-zinc-900 uppercase tracking-tighter">Nueva Transferencia</p>
-              </div>
-            </div>
-            <IconButton onClick={() => setIsModalOpen(false)} size="small" className="bg-zinc-50">
-              <span className="material-symbols-outlined text-lg">close</span>
-            </IconButton>
-          </div>
-        </DialogTitle>
+      {/* ── Modal Nueva Transferencia ── */}
+      <ModalNuevaTransferencia
+        open={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
+        userWarehouses={userWarehouses}
+        allWarehouses={allWarehouses}
+        defaultOriginWarehouse={selectedWarehouse}
+        onSaveSuccess={() => fetchTransferencias(selectedWarehouse)}
+      />
 
-        <DialogContent sx={{ p: 4, bgcolor: 'white' }}>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mt-4 mb-10 items-end">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Almacén Origen</label>
-              <Autocomplete
-                options={availableWarehouses}
-                value={sourceWarehouse}
-                onChange={(_, v) => setSourceWarehouse(v)}
-                renderInput={(params) => <TextField {...params} size="small" placeholder="Seleccionar origen..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '16px' } }} />}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Almacén Destino</label>
-              <Autocomplete
-                options={availableWarehouses}
-                value={targetWarehouse}
-                onChange={(_, v) => setTargetWarehouse(v)}
-                renderInput={(params) => <TextField {...params} size="small" placeholder="Seleccionar destino..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '16px' } }} />}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Buscar Producto</label>
-              <Autocomplete
-                options={availableProductsList}
-                getOptionLabel={(o) => `${o.name} (${o.unit}) - Stock: ${o.stock}`}
-                value={selectedProduct}
-                onChange={(_, v) => setSelectedProduct(v)}
-                renderInput={(params) => <TextField {...params} size="small" placeholder="Escriba nombre..." sx={{ '& .MuiOutlinedInput-root': { borderRadius: '16px' } }} />}
-              />
-            </div>
-            <button 
-              onClick={() => handleAddProduct(selectedProduct)}
-              className="h-10 bg-zinc-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-primary transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-100"
-            >
-              <span className="material-symbols-outlined text-sm">add</span>
-              Añadir Producto
-            </button>
-          </div>
-
-          <div className="bg-zinc-50/50 rounded-[2rem] border border-zinc-100 overflow-hidden">
-            <div className="px-8 py-4 border-b border-zinc-100 bg-zinc-50/80">
-              <p className="text-[10px] font-black text-zinc-800 uppercase tracking-[0.2em]">Detalle de Transferencia</p>
-            </div>
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse min-w-[800px]">
-                <thead>
-                  <tr className="bg-white/50 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 border-b border-zinc-100">
-                    <td className="px-8 py-4">Producto</td>
-                    <td className="px-8 py-4 text-center">U. Medida</td>
-                    <td className="px-8 py-4 text-center">Stock Actual</td>
-                    <td className="px-8 py-4 text-center w-40">Cant. a Enviar</td>
-                    <td className="px-8 py-4 text-right">Acciones</td>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50 bg-white">
-                  {transferItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-8 py-10 text-center text-[10px] font-black text-zinc-300 uppercase tracking-widest">
-                        Utilice el buscador arriba para añadir productos al listado
-                      </td>
-                    </tr>
-                  ) : (
-                    transferItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-zinc-50 transition-all group">
-                        <td className="px-8 py-5">
-                          <p className="font-black text-zinc-900 text-[11px] uppercase tracking-tight group-hover:text-primary transition-colors">{item.name}</p>
-                        </td>
-                        <td className="px-8 py-5 text-center text-[10px] font-bold text-zinc-400 uppercase">{item.unit}</td>
-                        <td className="px-8 py-5 text-center">
-                          <span className="px-3 py-1 rounded-full bg-zinc-100 text-zinc-900 text-[10px] font-black uppercase tracking-widest shadow-sm">
-                            {item.stock}
-                          </span>
-                        </td>
-                        <td className="px-8 py-5 text-center">
-                          <input 
-                            type="number"
-                            className="w-24 bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5 text-xs font-black text-center text-zinc-900 outline-none focus:border-primary transition-all"
-                            placeholder="0.00"
-                            value={item.qty}
-                            onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                          />
-                        </td>
-                        <td className="px-8 py-5 text-right">
-                          <IconButton onClick={() => handleRemoveItem(item.id)} size="small" className="text-zinc-200 hover:text-primary transition-colors">
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </IconButton>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </DialogContent>
-
-        <DialogActions sx={{ p: 2, px: 4, bgcolor: 'white', borderTop: '1px solid', borderColor: 'zinc-50' }}>
-          <Button onClick={() => setIsModalOpen(false)} sx={{ color: 'zinc-400', fontWeight: 900, fontSize: '10px', px: 4 }}>Cancelar</Button>
-          <button 
-            onClick={handleSaveTransfer}
-            className="h-10 px-10 bg-zinc-900 text-white rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-xl shadow-zinc-200 hover:bg-primary hover:shadow-primary/20 transition-all active:scale-[0.98] flex items-center gap-3"
-          >
-            <span className="material-symbols-outlined text-lg">send</span>
-            Procesar Transferencia
-          </button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar 
-        open={snackbar.open} 
-        autoHideDuration={4000} 
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} variant="filled" sx={{ width: '100%', borderRadius: '20px', fontWeight: 900, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.1em' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+      {/* ── Modal Detalle Transferencia ── */}
+      <ModalDetalleTransferencia
+        open={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setViewingTransfer(null);
+        }}
+        item={viewingTransfer}
+      />
     </div>
   );
 };

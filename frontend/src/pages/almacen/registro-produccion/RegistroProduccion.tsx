@@ -1,339 +1,313 @@
-import React, { useState, useMemo } from 'react';
+/**
+ * RegistroProduccion.tsx
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Propósito de la Vista:
+ * Módulo interactivo de registro de producción de lotes (intermedios y finales).
+ * Permite seleccionar el almacén productor, cargar recetas con balance de insumos en tiempo real,
+ * configurar despachos o áreas destino, y registrar la producción impactando el inventario.
+ *
+ * APIs Utilizadas:
+ * 1. GET  /v1/inventario/produccion/almacenes-usuario  (loadApiGetAlmacenesUsuario)
+ * 2. GET  /v1/inventario/produccion/almacenes          (loadApiGetAlmacenes)
+ * 3. GET  /v1/inventario/produccion/areas              (loadApiGetAreas)
+ * 4. GET  /v1/inventario/produccion/almacenes/:id/recetas (loadApiGetRecetasByAlmacen)
+ * 5. POST /v1/inventario/produccion/registrar-productos (loadApiRegistrarProductosProducidos)
+ *
+ * Controles Clave:
+ * - Detección y filtrado reactivo de recetas por tipo (Intermedios tipo=0, Finales tipo=1).
+ * - Cálculo consolidado en tiempo real de insumos requeridos vs disponibles con desglose de déficit.
+ * - Validación estricta que previene registrar si hay insumos insuficientes.
+ * - Destino obligatorio según tipo de producto (Área para finales, Almacén destino opcional para intermedios).
+ * - Soporte integral de modo claro y modo oscuro conforme a directrices de AGENTS.md.
+ */
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   Autocomplete,
   TextField,
   Switch,
-  FormControlLabel,
-  useMediaQuery,
-  useTheme,
   ToggleButtonGroup,
   ToggleButton,
-  InputAdornment
+  InputAdornment,
+  CircularProgress
 } from '@mui/material';
+import { Button } from '../../../components/common/Button';
 import { showAlert, MySwal } from '../../../config/alerts';
+import {
+  useRegistroProduccionServices,
+  AlmacenItem,
+  AreaItem,
+  RecetaProduccionItem,
+  RegistrarProduccionPayload,
+  ProductoProduccionPayloadItem
+} from './services/useRegistroProduccion';
 
-// --- Types ---
-interface IngredientReq {
-  item: string;
-  req: number; // Required quantity per unit of product
-}
-
-interface Product {
-  id: number;
-  name: string;
-  warehouse: string;
-  unit: string;
-  icon: string;
-  isIntermediate: boolean;
-  recipe: IngredientReq[];
-}
-
-interface ProductionItem {
+// --- Interfaces Locales ---
+interface ProductionListItem {
   tempId: number;
-  product: Product;
+  receta: RecetaProduccionItem;
   qty: number;
+  waste: number;
   destType: 'area' | 'branch' | 'none';
-  destination: string | null;
+  destinationArea?: AreaItem | null;
+  destinationBranch?: AlmacenItem | null;
+  isIntermediate: boolean;
 }
-
-// --- Mock Data ---
-const warehouses = ['BIZCOCHOS', 'CHEESECAKE', 'ESENCIAS', 'FRUTAS'];
-
-const branches = [
-  'Sucursal Salamanca',
-  'Sucursal Central',
-  'Sucursal Obrajes',
-  'Sucursal Achumani',
-  'Sucursal Calacoto'
-];
-
-const areas = [
-  'PLANTA',
-  'ADMINISTRACIÓN',
-  'AUDITORÍA EXTERNA',
-  'SUCURSAL SALAMANCA'
-];
-
-const availableProducts: Product[] = [
-  // --- BIZCOCHOS (Intermediate Products) ---
-  {
-    id: 1119,
-    name: 'BIZCOCHO DE ALMENDRA - RI',
-    warehouse: 'BIZCOCHOS',
-    unit: 'uds',
-    icon: 'bakery_dining',
-    isIntermediate: true,
-    recipe: [
-      { item: 'HARINA', req: 3.25 },
-      { item: 'AZUCAR', req: 0.8 },
-      { item: 'HUEVO', req: 10 },
-      { item: 'ALMENDRA', req: 0.8 },
-      { item: 'ACEITE', req: 0.7 },
-      { item: 'POLVO DE HORNEAR', req: 0.08 }
-    ]
-  },
-  {
-    id: 74,
-    name: 'BIZCOCHO DE CHOCOLATE-RI',
-    warehouse: 'BIZCOCHOS',
-    unit: 'uds',
-    icon: 'cookie',
-    isIntermediate: true,
-    recipe: [
-      { item: 'AZUCAR', req: 2.3 },
-      { item: 'CHISPAS DE CHOCOLATE', req: 0.8 },
-      { item: 'COCOA BREICK', req: 0.5 },
-      { item: 'HARINA', req: 2.3 },
-      { item: 'HUEVO', req: 12 },
-      { item: 'MARGARINA S/N SAL', req: 0.8 }
-    ]
-  },
-  {
-    id: 2159,
-    name: 'BIZCOCHO DE ZANAHORIA - RI',
-    warehouse: 'BIZCOCHOS',
-    unit: 'uds',
-    icon: 'bakery_dining',
-    isIntermediate: true,
-    recipe: [
-      { item: 'HUEVO', req: 8 },
-      { item: 'ACEITE', req: 1.5 },
-      { item: 'AZUCAR MORENA', req: 3.3 },
-      { item: 'HARINA', req: 3.3 },
-      { item: 'CANELA EN POLVO', req: 0.05 },
-      { item: 'ZANAHORIA', req: 4.5 }
-    ]
-  },
-  // --- BIZCOCHOS (Final Products) ---
-  {
-    id: 5001,
-    name: 'TORTA 3 LECHES FAMILIAR',
-    warehouse: 'BIZCOCHOS',
-    unit: 'uds',
-    icon: 'cake',
-    isIntermediate: false,
-    recipe: [
-      { item: 'HARINA', req: 1.6 },
-      { item: 'AZUCAR', req: 1.5 },
-      { item: 'HUEVO', req: 6 },
-      { item: 'CREMA VEGETAL', req: 0.5 }
-    ]
-  },
-  {
-    id: 5002,
-    name: 'TORTA DE ALMENDRA ESPECIAL',
-    warehouse: 'BIZCOCHOS',
-    unit: 'uds',
-    icon: 'cake',
-    isIntermediate: false,
-    recipe: [
-      { item: 'HARINA', req: 2.0 },
-      { item: 'AZUCAR', req: 1.2 },
-      { item: 'ALMENDRA', req: 0.5 },
-      { item: 'CREMA VEGETAL', req: 0.3 }
-    ]
-  },
-
-  // --- CHEESECAKE (Intermediate Products) ---
-  {
-    id: 2001,
-    name: 'BASE PARA CHEESECAKE - RI',
-    warehouse: 'CHEESECAKE',
-    unit: 'uds',
-    icon: 'cake',
-    isIntermediate: true,
-    recipe: [
-      { item: 'QUESO CREMA', req: 1.5 },
-      { item: 'GALLETA OREO', req: 0.5 },
-      { item: 'AZUCAR', req: 0.3 }
-    ]
-  },
-  // --- CHEESECAKE (Final Products) ---
-  {
-    id: 2002,
-    name: 'CHEESECAKE DE FRUTOS ROJOS',
-    warehouse: 'CHEESECAKE',
-    unit: 'uds',
-    icon: 'cake',
-    isIntermediate: false,
-    recipe: [
-      { item: 'QUESO CREMA', req: 1.2 },
-      { item: 'MERMELADA FRUTILLA', req: 0.4 },
-      { item: 'GALLETA BASE', req: 0.3 }
-    ]
-  },
-  {
-    id: 2003,
-    name: 'CHEESECAKE DE OREO',
-    warehouse: 'CHEESECAKE',
-    unit: 'uds',
-    icon: 'cake',
-    isIntermediate: false,
-    recipe: [
-      { item: 'QUESO CREMA', req: 1.0 },
-      { item: 'GALLETA OREO', req: 0.6 },
-      { item: 'AZUCAR', req: 0.2 }
-    ]
-  }
-];
-
-// Insumos iniciales con stock simulado
-const initialStock: Record<string, number> = {
-  'HARINA': 50.0, // kg
-  'AZUCAR': 30.0, // kg
-  'HUEVO': 150, // Unidades
-  'ALMENDRA': 10.0, // kg
-  'ACEITE': 15.0, // litros
-  'POLVO DE HORNEAR': 5.0, // kg
-  'CHISPAS DE CHOCOLATE': 12.0, // kg
-  'COCOA BREICK': 0.0, // kg (Falta de stock por defecto)
-  'MARGARINA S/N SAL': 10.0, // kg
-  'AZUCAR MORENA': 15.0, // kg
-  'CANELA EN POLVO': 2.0, // kg
-  'ZANAHORIA': 20.0, // kg
-  'CREMA VEGETAL': 10.0, // kg
-  'QUESO CREMA': 12.0, // kg
-  'GALLETA OREO': 8.0, // kg
-  'MERMELADA FRUTILLA': 0.0, // kg (Falta de stock por defecto)
-  'GALLETA BASE': 10.0 // kg
-};
 
 const StepBadge: React.FC<{ num: string; label: string }> = ({ num, label }) => (
   <div className="flex items-center gap-3 mb-4">
     <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-black text-xs shadow-lg shadow-primary/20 shrink-0">
       {num}
     </div>
-    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">{label}</span>
+    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant/70 font-headline">
+      {label}
+    </span>
   </div>
 );
 
 export const RegistroProduccion: React.FC = () => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
+  const {
+    loadApiGetAreas,
+    loadApiGetAlmacenes,
+    loadApiGetAlmacenesUsuario,
+    loadApiGetRecetasByAlmacen,
+    loadApiRegistrarProductosProducidos
+  } = useRegistroProduccionServices();
 
-  // --- States ---
-  const [selectedWarehouse, setSelectedWarehouse] = useState<string | null>('BIZCOCHOS');
+  // --- Catálogos Remotos ---
+  const [userWarehouses, setUserWarehouses] = useState<AlmacenItem[]>([]);
+  const [allWarehouses, setAllWarehouses] = useState<AlmacenItem[]>([]);
+  const [areas, setAreas] = useState<AreaItem[]>([]);
+  const [availableRecetas, setAvailableRecetas] = useState<RecetaProduccionItem[]>([]);
+
+  const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
+  const [isLoadingRecetas, setIsLoadingRecetas] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // --- Estados de Formulario de Cabecera ---
+  const [selectedWarehouse, setSelectedWarehouse] = useState<AlmacenItem | null>(null);
   const [productionDate, setProductionDate] = useState<Dayjs | null>(dayjs());
-  const [stock, setStock] = useState<Record<string, number>>(initialStock);
-  const [productionList, setProductionList] = useState<ProductionItem[]>([]);
 
-  // Adder/Form States
+  // --- Estados del Constructor de Producto ---
   const [prodType, setProdType] = useState<'intermediate' | 'final'>('intermediate');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [quantity, setQuantity] = useState<number | string>(5);
+  const [selectedReceta, setSelectedReceta] = useState<RecetaProduccionItem | null>(null);
+  const [quantity, setQuantity] = useState<number | string>(1);
+  const [waste, setWaste] = useState<number | string>(0);
 
-  // Intermediate Product Transfer State
+  // Transferencia de Intermedios
   const [shouldTransfer, setShouldTransfer] = useState<boolean>(false);
-  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<AlmacenItem | null>(null);
 
-  // Final Product Area State
-  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  // Destino de Finales (Área)
+  const [selectedArea, setSelectedArea] = useState<AreaItem | null>(null);
 
-  // --- Memos & Calculations ---
+  // --- Lista de Producción Agregada ---
+  const [productionList, setProductionList] = useState<ProductionListItem[]>([]);
 
-  // Filtra los productos según el almacén y el tipo seleccionado
-  const filteredProducts = useMemo(() => {
-    if (!selectedWarehouse) return [];
-    return availableProducts.filter(
-      (p) =>
-        p.warehouse === selectedWarehouse &&
-        p.isIntermediate === (prodType === 'intermediate')
-    );
+  // 1. Carga inicial de almacenes y áreas
+  useEffect(() => {
+    const initData = async () => {
+      setIsLoadingInitial(true);
+      try {
+        const [resUserWh, resAllWh, resAreas] = await Promise.all([
+          loadApiGetAlmacenesUsuario(),
+          loadApiGetAlmacenes(),
+          loadApiGetAreas()
+        ]);
+
+        const uWhList: AlmacenItem[] = (resUserWh && resUserWh.success && Array.isArray(resUserWh.almacenes))
+          ? resUserWh.almacenes
+          : [];
+        const allWhList: AlmacenItem[] = (resAllWh && resAllWh.success && Array.isArray(resAllWh.almacenes))
+          ? resAllWh.almacenes
+          : uWhList;
+        const areaList: AreaItem[] = (resAreas && resAreas.success && Array.isArray(resAreas.areas))
+          ? resAreas.areas
+          : [];
+
+        setUserWarehouses(uWhList);
+        setAllWarehouses(allWhList);
+        setAreas(areaList);
+
+        // Seleccionar primer almacén disponible
+        if (uWhList.length > 0) {
+          setSelectedWarehouse(uWhList[0]);
+        } else if (allWhList.length > 0) {
+          setSelectedWarehouse(allWhList[0]);
+        }
+
+        if (areaList.length > 0) {
+          setSelectedArea(areaList[0]);
+        }
+      } catch (err) {
+        console.error('Error inicializando datos:', err);
+      } finally {
+        setIsLoadingInitial(false);
+      }
+    };
+
+    initData();
+  }, []);
+
+  // 2. Cargar recetas al cambiar almacén productor o tipo de producto
+  useEffect(() => {
+    if (!selectedWarehouse) {
+      setAvailableRecetas([]);
+      return;
+    }
+
+    const fetchRecetas = async () => {
+      setIsLoadingRecetas(true);
+      const tipo = prodType === 'intermediate' ? 0 : 1;
+      const res = await loadApiGetRecetasByAlmacen(selectedWarehouse.ID_PLANTA_ALMACEN, tipo);
+      if (res && res.success && Array.isArray(res.recetas)) {
+        setAvailableRecetas(res.recetas);
+      } else {
+        setAvailableRecetas([]);
+      }
+      setIsLoadingRecetas(false);
+    };
+
+    fetchRecetas();
   }, [selectedWarehouse, prodType]);
+
+  // --- Memos & Análisis de Stock Consolidado ---
 
   // Cálculo consolidado de insumos requeridos en tiempo real
   const aggregatedStockReport = useMemo(() => {
-    const requirements: Record<string, number> = {};
+    const requirements: Record<
+      string,
+      {
+        name: string;
+        required: number;
+        available: number;
+        unit: string;
+      }
+    > = {};
 
-    // 1. Acumula requerimientos de los productos en la lista
+    // 1. Acumula requerimientos de los productos en la lista activa
     productionList.forEach((item) => {
-      item.product.recipe.forEach((ingredient) => {
-        requirements[ingredient.item] =
-          (requirements[ingredient.item] || 0) + ingredient.req * item.qty;
+      const ingredientes = item.receta.PRODUCTOS || [];
+      ingredientes.forEach((ing) => {
+        const key = `${ing.ID_PRODUCTO || 0}_${ing.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0}_${ing.PRODUCTO || ''}`;
+        const reqAmount = (ing.CANTIDAD || 0) * item.qty;
+        if (!requirements[key]) {
+          requirements[key] = {
+            name: ing.PRODUCTO || 'Insumo',
+            required: 0,
+            available: ing.stock ?? 0,
+            unit: ing.UNIDAD_MEDIDA || 'uds'
+          };
+        }
+        requirements[key].required += reqAmount;
       });
     });
 
-    // 2. Suma también en tiempo real el producto que se está editando actualmente (Vista Previa)
-    if (selectedProduct && Number(quantity) > 0) {
-      selectedProduct.recipe.forEach((ingredient) => {
-        requirements[ingredient.item] =
-          (requirements[ingredient.item] || 0) +
-          ingredient.req * Number(quantity);
+    // 2. Suma en tiempo real el producto que se está editando en el formulario
+    if (selectedReceta && Number(quantity) > 0) {
+      const currentQty = parseFloat(String(quantity)) || 0;
+      const ingredientes = selectedReceta.PRODUCTOS || [];
+      ingredientes.forEach((ing) => {
+        const key = `${ing.ID_PRODUCTO || 0}_${ing.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0}_${ing.PRODUCTO || ''}`;
+        const reqAmount = (ing.CANTIDAD || 0) * currentQty;
+        if (!requirements[key]) {
+          requirements[key] = {
+            name: ing.PRODUCTO || 'Insumo',
+            required: 0,
+            available: ing.stock ?? 0,
+            unit: ing.UNIDAD_MEDIDA || 'uds'
+          };
+        }
+        requirements[key].required += reqAmount;
       });
     }
 
-    // 3. Convierte en una lista detallada con estados de stock
-    return Object.entries(requirements).map(([name, reqAmount]) => {
-      const available = stock[name] ?? 0;
-      const sufficient = available >= reqAmount;
-      const deficit = sufficient ? 0 : reqAmount - available;
-
-      return {
-        name,
-        required: reqAmount,
-        available,
-        sufficient,
-        deficit
-      };
-    }).sort((a, b) => {
-      // Mostrar primero los insumos con stock insuficiente
-      if (a.sufficient !== b.sufficient) return a.sufficient ? 1 : -1;
-      return b.deficit - a.deficit;
-    });
-  }, [productionList, selectedProduct, quantity, stock]);
+    // 3. Genera listado con desglose de suficiencia y déficit
+    return Object.values(requirements)
+      .map((item) => {
+        const sufficient = item.available >= item.required;
+        const deficit = sufficient ? 0 : item.required - item.available;
+        return {
+          ...item,
+          sufficient,
+          deficit
+        };
+      })
+      .sort((a, b) => {
+        if (a.sufficient !== b.sufficient) return a.sufficient ? 1 : -1;
+        return b.deficit - a.deficit;
+      });
+  }, [productionList, selectedReceta, quantity]);
 
   // Determina si falta stock para los productos YA confirmados en la lista
   const hasConfirmedMissingStock = useMemo(() => {
-    // Calcula los requisitos estrictos de la lista de producción agregada
-    const requirements: Record<string, number> = {};
+    const requirements: Record<string, { required: number; available: number }> = {};
     productionList.forEach((item) => {
-      item.product.recipe.forEach((ingredient) => {
-        requirements[ingredient.item] =
-          (requirements[ingredient.item] || 0) + ingredient.req * item.qty;
+      (item.receta.PRODUCTOS || []).forEach((ing) => {
+        const key = `${ing.ID_PRODUCTO || 0}_${ing.ID_PRODUCTO_INTERMEDIO_ANTECESOR || 0}_${ing.PRODUCTO || ''}`;
+        if (!requirements[key]) {
+          requirements[key] = {
+            required: 0,
+            available: ing.stock ?? 0
+          };
+        }
+        requirements[key].required += (ing.CANTIDAD || 0) * item.qty;
       });
     });
 
-    return Object.entries(requirements).some(([name, reqAmount]) => {
-      const available = stock[name] ?? 0;
-      return available < reqAmount;
-    });
-  }, [productionList, stock]);
+    return Object.values(requirements).some((req) => req.available < req.required);
+  }, [productionList]);
 
-  // Determina si falta stock incluyendo el producto en edición actual (para alertas rápidas)
+  // Determina si falta stock incluyendo el producto en edición actual
   const hasTotalMissingStock = useMemo(() => {
     return aggregatedStockReport.some((report) => !report.sufficient);
   }, [aggregatedStockReport]);
 
-  // --- Handlers ---
+  // --- Acciones de Formulario ---
 
   const handleAddProduct = () => {
-    if (!selectedProduct || !quantity || Number(quantity) <= 0) {
-      showAlert.error('Datos incompletos', 'Por favor ingresa una cantidad válida.');
+    if (!selectedReceta) {
+      showAlert.error('Selecciona un producto', 'Debes elegir una receta del catálogo disponible.');
       return;
     }
 
-    // Validar stock individual de este producto con su cantidad antes de añadir a la tabla
+    const qtyNum = parseFloat(String(quantity));
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      showAlert.error('Cantidad inválida', 'Ingresa una cantidad producida mayor a 0.');
+      return;
+    }
+
+    const wasteNum = parseFloat(String(waste)) || 0;
+    if (wasteNum < 0) {
+      showAlert.error('Desperdicio inválido', 'El desperdicio no puede ser un valor negativo.');
+      return;
+    }
+
+    // Validar insumos específicos contra stock acumulado
     const missingIngredients: string[] = [];
-    selectedProduct.recipe.forEach((ingredient) => {
-      // Sumar requerimiento acumulado en la lista actual para este insumo
+    (selectedReceta.PRODUCTOS || []).forEach((ing) => {
       let alreadyRequired = 0;
       productionList.forEach((item) => {
-        item.product.recipe.forEach((r) => {
-          if (r.item === ingredient.item) {
-            alreadyRequired += r.req * item.qty;
+        (item.receta.PRODUCTOS || []).forEach((r) => {
+          if (
+            (r.ID_PRODUCTO && r.ID_PRODUCTO === ing.ID_PRODUCTO) ||
+            (r.ID_PRODUCTO_INTERMEDIO_ANTECESOR &&
+              r.ID_PRODUCTO_INTERMEDIO_ANTECESOR === ing.ID_PRODUCTO_INTERMEDIO_ANTECESOR) ||
+            r.PRODUCTO === ing.PRODUCTO
+          ) {
+            alreadyRequired += (r.CANTIDAD || 0) * item.qty;
           }
         });
       });
 
-      const totalNeeded = alreadyRequired + ingredient.req * Number(quantity);
-      const available = stock[ingredient.item] ?? 0;
+      const totalNeeded = alreadyRequired + (ing.CANTIDAD || 0) * qtyNum;
+      const available = ing.stock ?? 0;
       if (available < totalNeeded) {
         const missingAmount = totalNeeded - available;
         missingIngredients.push(
-          `• <b>${ingredient.item}</b>: Falta <b>${missingAmount.toFixed(2)}</b> (Requerido: ${totalNeeded.toFixed(2)}, Disponible: ${available.toFixed(2)})`
+          `• <b>${ing.PRODUCTO || 'Insumo'}</b>: Falta <b>${missingAmount.toFixed(2)} ${ing.UNIDAD_MEDIDA || ''}</b> (Requerido: ${totalNeeded.toFixed(2)}, Disponible: ${available.toFixed(2)})`
         );
       }
     });
@@ -343,11 +317,11 @@ export const RegistroProduccion: React.FC = () => {
         icon: 'warning',
         title: 'Insumos Insuficientes',
         html: `
-          <div style="text-align: left; margin-top: 10px; font-family: sans-serif;">
+          <div style="text-align: left; margin-top: 10px; font-family: var(--font-main, sans-serif);">
             <p style="font-size: 13px; font-weight: 500; color: #52525b; line-height: 1.5;">
-              No se puede añadir <b>${quantity}</b> unidad(es) de <b>${selectedProduct.name}</b> debido a la falta de stock para los siguientes insumos en el almacén:
+              No se puede añadir <b>${qtyNum}</b> unidad(es) de <b>${selectedReceta.PRODUCTO || selectedReceta.NOMBRE}</b> debido a la falta de stock en el almacén:
             </p>
-            <div style="background-color: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); padding: 16px; border-radius: 16px; margin-top: 14px; font-size: 11px; line-height: 1.6; color: #dc2626;">
+            <div style="background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); padding: 16px; border-radius: 16px; margin-top: 14px; font-size: 11px; line-height: 1.6; color: #dc2626;">
               ${missingIngredients.join('<br/>')}
             </div>
           </div>
@@ -355,176 +329,225 @@ export const RegistroProduccion: React.FC = () => {
         confirmButtonText: 'Entendido',
         confirmButtonColor: 'var(--primary, #9d0013)'
       });
-      return; // Detiene la adición a la tabla
+      return;
     }
 
-    // Validar área o sucursal según corresponda
+    // Validar destinos
     let destType: 'area' | 'branch' | 'none' = 'none';
-    let destination: string | null = null;
-
     if (prodType === 'final') {
       if (!selectedArea) {
-        showAlert.error('Destino requerido', 'Debes seleccionar un Área de destino para el producto final.');
+        showAlert.error('Área requerida', 'Debes seleccionar un Área de destino para el producto final.');
         return;
       }
       destType = 'area';
-      destination = selectedArea;
     } else {
       if (shouldTransfer) {
         if (!selectedBranch) {
-          showAlert.error('Almacén requerido', 'Has seleccionado transferir, debes elegir un almacén.');
+          showAlert.error('Almacén requerido', 'Has seleccionado transferir, debes elegir el almacén de destino.');
           return;
         }
         destType = 'branch';
-        destination = selectedBranch;
       }
     }
 
-    // Agregar a la lista
-    const newItem: ProductionItem = {
+    const newItem: ProductionListItem = {
       tempId: Date.now() + Math.random(),
-      product: selectedProduct,
-      qty: Number(quantity),
+      receta: selectedReceta,
+      qty: qtyNum,
+      waste: wasteNum,
       destType,
-      destination
+      destinationArea: prodType === 'final' ? selectedArea : null,
+      destinationBranch: prodType === 'intermediate' && shouldTransfer ? selectedBranch : null,
+      isIntermediate: prodType === 'intermediate'
     };
 
     setProductionList((prev) => [...prev, newItem]);
 
-    // Resetear cargador unitario pero conservar tipo e intermedios
-    setSelectedProduct(null);
-    setQuantity(5);
+    // Limpiar campos del formulario
+    setSelectedReceta(null);
+    setQuantity(1);
+    setWaste(0);
     setShouldTransfer(false);
     setSelectedBranch(null);
-    setSelectedArea(null);
 
-    showAlert.toast('Producto añadido a la orden', 'success');
+    showAlert.toast('Producto añadido a la orden de producción', 'success');
   };
 
   const handleRemoveProduct = (tempId: number) => {
     setProductionList((prev) => prev.filter((item) => item.tempId !== tempId));
-    showAlert.toast('Producto removido', 'info');
+    showAlert.toast('Producto removido de la orden', 'info');
+  };
+
+  const handleResetForm = () => {
+    setProductionList([]);
+    setSelectedReceta(null);
+    setQuantity(1);
+    setWaste(0);
+    setShouldTransfer(false);
+    setSelectedBranch(null);
+    showAlert.toast('Formulario reiniciado', 'info');
   };
 
   const handleRegisterProduction = async () => {
+    if (!selectedWarehouse) {
+      showAlert.error('Almacén requerido', 'Selecciona un almacén productor.');
+      return;
+    }
+
     if (productionList.length === 0) {
-      showAlert.error('Lista vacía', 'Debes añadir al menos un producto a la lista antes de registrar.');
+      showAlert.error('Lista vacía', 'Debes añadir al menos un producto antes de registrar la producción.');
       return;
     }
 
     if (hasConfirmedMissingStock) {
       showAlert.error(
-        'Falta de stock insuperable',
-        'No se puede procesar el registro porque faltan insumos en el almacén para los productos en la lista.'
+        'Insumos Insuficientes',
+        'No se puede procesar el registro porque faltan insumos en el inventario para los productos en la lista.'
       );
       return;
     }
 
-    // Confirmar orden
     const isConfirmed = await showAlert.confirm(
       '¿Registrar Producción?',
-      `Se registrarán ${productionList.length} productos en el almacén de ${selectedWarehouse}. Los insumos correspondientes serán descontados del stock en tiempo real.`,
+      `Se registrarán ${productionList.length} producto(s) en ${selectedWarehouse.DESCRICION || selectedWarehouse.nombre || 'el almacén'}. Se descontarán automáticamente los insumos correspondientes del inventario.`,
       'Sí, Registrar'
     );
 
-    if (isConfirmed) {
-      // Simular descuento de stock
-      setStock((prev) => {
-        const updated = { ...prev };
-        productionList.forEach((item) => {
-          item.product.recipe.forEach((ingredient) => {
-            updated[ingredient.item] = Math.max(
-              0,
-              (updated[ingredient.item] ?? 0) - ingredient.req * item.qty
-            );
-          });
-        });
-        return updated;
+    if (!isConfirmed) return;
+
+    setIsSubmitting(true);
+    try {
+      const productosPayload: ProductoProduccionPayloadItem[] = productionList.map((item) => {
+        let detalleText = '';
+        if (item.destType === 'area' && item.destinationArea) {
+          detalleText = `Área: ${item.destinationArea.NOMBRE}`;
+        } else if (item.destType === 'branch' && item.destinationBranch) {
+          detalleText = `Transferido a: ${item.destinationBranch.DESCRICION || item.destinationBranch.nombre}`;
+        }
+
+        return {
+          id_planta_almacen: selectedWarehouse.ID_PLANTA_ALMACEN,
+          id_planta_receta: item.receta.ID_PLANTA_RECETA,
+          id_producto_intermedio: item.receta.ID_PRODUCTO_INTERMEDIO || 0,
+          id_sub_categoria_2: item.receta.ID_SUB_CATEGORIA_2 || 0,
+          cantidad_producida: item.qty,
+          cantidad_desperdicio: item.waste || 0,
+          detalle: detalleText || undefined,
+          producto: item.receta.PRODUCTO || item.receta.NOMBRE || '',
+          cant_AE: item.receta.CANTIDAD_ADECUACION || 0
+        };
       });
 
-      setProductionList([]);
-      showAlert.success(
-        '¡Registro Exitoso!',
-        'Los productos producidos se registraron de forma masiva en el sistema y se actualizaron los niveles de inventario.'
-      );
+      const payload: RegistrarProduccionPayload = {
+        id_area: selectedArea?.ID_AREA,
+        productos: productosPayload
+      };
+
+      const res = await loadApiRegistrarProductosProducidos(payload);
+      if (res && res.success) {
+        showAlert.success(
+          '¡Producción Registrada!',
+          res.message || 'La orden de producción se registró correctamente en el sistema y se actualizaron los stocks.'
+        );
+        // Limpiar lista
+        setProductionList([]);
+        setSelectedReceta(null);
+        setQuantity(1);
+        setWaste(0);
+
+        // Recargar recetas para actualizar stocks disponibles
+        const tipo = prodType === 'intermediate' ? 0 : 1;
+        loadApiGetRecetasByAlmacen(selectedWarehouse.ID_PLANTA_ALMACEN, tipo).then((recRes) => {
+          if (recRes && recRes.success && Array.isArray(recRes.recetas)) {
+            setAvailableRecetas(recRes.recetas);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error registrando producción:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleResetForm = () => {
-    setProductionList([]);
-    setSelectedProduct(null);
-    setQuantity(5);
-    setShouldTransfer(false);
-    setSelectedBranch(null);
-    setSelectedArea(null);
-    showAlert.toast('Formulario reiniciado', 'info');
-  };
-
   return (
-    <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-20 px-4 md:px-0">
+    <div className="max-w-[1400px] mx-auto w-full animate-in fade-in duration-500 pb-20 px-3 sm:px-0">
 
-      {/* Header Section */}
+      {/* ── Cabecera de Página Oficial ── */}
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <p className="text-3xl md:text-4xl font-black text-zinc-900 tracking-tighter uppercase leading-none">
-            Registro de Producción
-          </p>
-          <p className="text-zinc-500 mt-3 font-medium max-w-xl text-xs md:text-sm">
-            Módulo interactivo para asentar productos intermedios y finales en una sola orden.
-            Realiza verificación consolidada del stock de insumos antes del registro.
+          <div className="flex items-center gap-3 mb-2">
+            <div>
+              <h1 className="text-2xl md:text-2xl font-black text-on-surface uppercase tracking-tight leading-none font-headline">
+                Registro de Producción
+              </h1>
+            </div>
+          </div>
+          <p className="text-[10px] font-black text-on-surface-variant mt-1 font-body">
+            Módulo para asentar productos intermedios y terminados con cálculo de insumos en tiempo real.
           </p>
         </div>
-        <div className="flex gap-3">
-          <button
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="secondary"
+            size="md"
+            icon="restart_alt"
             onClick={handleResetForm}
-            className="px-6 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold rounded-2xl text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 border border-zinc-200"
+            className="!h-10 !px-5"
           >
-            <span className="material-symbols-outlined text-sm">restart_alt</span>
             Reiniciar
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Main Responsive Grid */}
+      {/* ── Grid Principal Responsive ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-        {/* Left Column: Config, Adder Form & Current List (8/12 grid) */}
-        <div className="lg:col-span-8 space-y-8">
+        {/* Columna Izquierda: Configuración, Formulario y Lista Activa (8/12) */}
+        <div className="lg:col-span-8 space-y-6">
 
-          {/* STEP 01: Origen y Fecha */}
-          <div className="p-6 bg-white rounded-[2rem] border border-zinc-100 shadow-sm space-y-6">
-            <StepBadge num="01" label="Origen y fecha de producción" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">
-                  Almacén Productor (Origen)
+          {/* PASO 01: Origen y Fecha */}
+          <div className="p-6 bg-surface dark:bg-zinc-900 rounded-[2rem] border border-outline-variant/60 dark:border-zinc-800 shadow-sm space-y-5">
+            <StepBadge num="01" label="Origen y fecha de elaboración" />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 font-headline">
+                  Almacén Productor (Origen) *
                 </label>
                 <Autocomplete
-                  options={warehouses}
+                  options={userWarehouses.length > 0 ? userWarehouses : allWarehouses}
+                  getOptionLabel={(opt) => opt.DESCRICION || opt.nombre || `Almacén #${opt.ID_PLANTA_ALMACEN}`}
                   value={selectedWarehouse}
-                  disabled={productionList.length > 0}
-                  onChange={(_, v) => {
-                    setSelectedWarehouse(v);
-                    setSelectedProduct(null);
+                  disabled={productionList.length > 0 || isLoadingInitial}
+                  onChange={(_, val) => {
+                    setSelectedWarehouse(val);
+                    setSelectedReceta(null);
                   }}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       size="small"
-                      placeholder="Seleccione almacén..."
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+                      placeholder="Seleccionar almacén..."
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: '14px',
+                          bgcolor: 'var(--surface-variant, rgba(0,0,0,0.02))'
+                        }
+                      }}
                     />
                   )}
                 />
                 {productionList.length > 0 && (
-                  <p className="text-[8px] text-primary font-black uppercase mt-1 ml-1 animate-pulse">
-                    El almacén se encuentra bloqueado por ítems activos en la lista
+                  <p className="text-[9px] text-primary font-bold uppercase mt-1 ml-1 animate-pulse">
+                    * Bloqueado mientras existan productos activos en la lista
                   </p>
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 font-headline">
                   Fecha de Elaboración
                 </label>
                 <DatePicker
@@ -534,7 +557,12 @@ export const RegistroProduccion: React.FC = () => {
                     textField: {
                       size: 'small',
                       fullWidth: true,
-                      sx: { '& .MuiOutlinedInput-root': { borderRadius: '12px' } }
+                      sx: {
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: '14px',
+                          bgcolor: 'var(--surface-variant, rgba(0,0,0,0.02))'
+                        }
+                      }
                     }
                   }}
                 />
@@ -542,22 +570,26 @@ export const RegistroProduccion: React.FC = () => {
             </div>
           </div>
 
-          {/* STEP 02: Selector de Producto & Reglas de Destino */}
-          <div className={`p-6 bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm space-y-6 transition-all duration-300 ${!selectedWarehouse ? 'opacity-30 pointer-events-none' : ''}`}>
-            <StepBadge num="02" label="Configuración del Producto producido" />
+          {/* PASO 02: Selector de Producto & Configuración de Destino */}
+          <div
+            className={`p-6 bg-surface dark:bg-zinc-900 rounded-[2rem] border border-outline-variant/60 dark:border-zinc-800 shadow-sm space-y-6 transition-all duration-300 ${!selectedWarehouse ? 'opacity-30 pointer-events-none' : ''
+              }`}
+          >
+            <StepBadge num="02" label="Configuración del Producto a Elaborar" />
 
-            {/* Toggle Tipo Producto: Intermedio o Final */}
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between border-b border-zinc-100 pb-4">
+            {/* Selector Tipo Producto: Intermedio vs Final */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between border-b border-outline-variant/40 pb-4">
               <ToggleButtonGroup
                 value={prodType}
                 exclusive
-                onChange={(_, v) => {
-                  if (v) {
-                    setProdType(v);
-                    setSelectedProduct(null);
+                onChange={(_, val) => {
+                  if (val) {
+                    setProdType(val);
+                    setSelectedReceta(null);
+                    setQuantity(1);
+                    setWaste(0);
                     setShouldTransfer(false);
                     setSelectedBranch(null);
-                    setSelectedArea(null);
                   }
                 }}
                 size="small"
@@ -565,55 +597,77 @@ export const RegistroProduccion: React.FC = () => {
                   '& .MuiToggleButton-root': {
                     borderRadius: '12px',
                     px: 3,
-                    border: '1px solid var(--outline-variant)',
+                    py: 1,
+                    border: '1px solid var(--border-outline-variant, #e4e4e7)',
                     textTransform: 'none',
                     fontWeight: 900,
-                    fontSize: '10px',
-                    letterSpacing: '0.05em'
+                    fontSize: '11px',
+                    letterSpacing: '0.04em',
+                    fontFamily: 'var(--font-headline)'
                   }
                 }}
               >
-                <ToggleButton value="intermediate" className="uppercase">
-                  📦 Producto Intermedio
+                <ToggleButton value="intermediate" className="uppercase gap-1.5">
+                  <span className="material-symbols-outlined text-base">inventory_2</span>
+                  Producto Intermedio
                 </ToggleButton>
-                <ToggleButton value="final" className="uppercase">
-                  ✨ Producto Final
+                <ToggleButton value="final" className="uppercase gap-1.5">
+                  <span className="material-symbols-outlined text-base">star</span>
+                  Producto Final
                 </ToggleButton>
               </ToggleButtonGroup>
 
-              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wide">
-                * Catálogo adaptado a: {prodType === 'intermediate' ? 'Intermedios' : 'Productos Finales'}
+              <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">
+                Catálogo: {prodType === 'intermediate' ? 'Intermedios' : 'Productos Finales'} ({availableRecetas.length} recetas)
               </span>
             </div>
 
             {/* Formulario Inputs */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-
-              {/* Autocomplete de producto */}
-              <div className="md:col-span-5 space-y-1">
-                <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">
-                  Producto a registrar
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
+              {/* Autocomplete de Receta */}
+              <div className="md:col-span-6 space-y-1.5">
+                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 font-headline">
+                  Receta / Producto a Registrar *
                 </label>
                 <Autocomplete
-                  options={filteredProducts}
-                  getOptionLabel={(option) => option.name}
-                  value={selectedProduct}
-                  onChange={(_, v) => setSelectedProduct(v)}
+                  options={availableRecetas}
+                  loading={isLoadingRecetas}
+                  getOptionLabel={(opt) =>
+                    `${opt.PRODUCTO || opt.NOMBRE || 'Sin nombre'} (Máx. prod: ${opt.CANTIDAD ?? '0'} ${opt.UNIDAD_MEDIDA || 'uds'})`
+                  }
+                  value={selectedReceta}
+                  onChange={(_, val) => {
+                    setSelectedReceta(val);
+                    if (val) {
+                      setQuantity(1);
+                    }
+                  }}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       size="small"
-                      placeholder="Seleccionar..."
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+                      placeholder={isLoadingRecetas ? 'Cargando recetas...' : 'Seleccionar receta...'}
+                      slotProps={{
+                        input: {
+                          ...params.InputProps,
+
+                        }
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: '14px',
+                          bgcolor: 'var(--surface-variant, rgba(0,0,0,0.02))'
+                        }
+                      }}
                     />
                   )}
                 />
               </div>
 
-              {/* Input de Cantidad */}
-              <div className="md:col-span-3 space-y-1">
-                <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">
-                  Cantidad Producida
+              {/* Cantidad Producida */}
+              <div className="md:col-span-3 space-y-1.5">
+                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 font-headline">
+                  Cantidad Producida *
                 </label>
                 <TextField
                   fullWidth
@@ -623,51 +677,72 @@ export const RegistroProduccion: React.FC = () => {
                   onChange={(e) => setQuantity(e.target.value)}
                   slotProps={{
                     input: {
-                      endAdornment: selectedProduct ? (
+                      endAdornment: selectedReceta ? (
                         <InputAdornment position="end">
-                          <span className="text-[9px] font-black uppercase text-primary bg-primary/10 px-2 py-0.5 rounded">
-                            {selectedProduct.unit}
+                          <span className="text-[10px] font-black uppercase text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
+                            {selectedReceta.UNIDAD_MEDIDA || 'uds'}
                           </span>
                         </InputAdornment>
                       ) : null
                     }
                   }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '14px',
+                      bgcolor: 'var(--surface-variant, rgba(0,0,0,0.02))'
+                    }
+                  }}
                 />
               </div>
 
-              {/* Botón Añadir (Visible si no hay campos condicionales abajo) */}
-              {prodType === 'intermediate' && !shouldTransfer && (
-                <div className="md:col-span-4">
-                  <button
-                    onClick={handleAddProduct}
-                    disabled={!selectedProduct || !quantity || Number(quantity) <= 0}
-                    className={`w-full h-11 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${!selectedProduct || !quantity || Number(quantity) <= 0
-                        ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed border border-zinc-200'
-                        : 'bg-zinc-900 hover:bg-primary text-white shadow-lg hover:scale-[1.02] active:scale-[0.98]'
-                      }`}
-                  >
-                    Añadir a la Lista
-                  </button>
-                </div>
-              )}
+              {/* Desperdicio */}
+              <div className="md:col-span-3 space-y-1.5">
+                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 font-headline">
+                  Desperdicio (Merma)
+                </label>
+                <TextField
+                  fullWidth
+                  type="number"
+                  size="small"
+                  value={waste}
+                  onChange={(e) => setWaste(e.target.value)}
+                  slotProps={{
+                    input: {
+                      endAdornment: selectedReceta ? (
+                        <InputAdornment position="end">
+                          <span className="text-[10px] font-bold text-on-surface-variant">
+                            {selectedReceta.UNIDAD_MEDIDA || 'uds'}
+                          </span>
+                        </InputAdornment>
+                      ) : null
+                    }
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '14px',
+                      bgcolor: 'var(--surface-variant, rgba(0,0,0,0.02))'
+                    }
+                  }}
+                />
+              </div>
             </div>
 
             {/* Condicionales por Tipo de Producto */}
-            <div className="space-y-4">
-
-              {/* Flujo: PRODUCTO INTERMEDIO -> Pregunta Transferencia */}
+            <div className="space-y-4 pt-2">
+              {/* Flujo Intermedio: Despacho Opcional a otro Almacén */}
               {prodType === 'intermediate' && (
-                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-4 animate-in slide-in-from-top-2 duration-300">
+                <div className="p-4 bg-surface-variant/40 dark:bg-zinc-850/40 rounded-2xl border border-outline-variant/60 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-zinc-400">local_shipping</span>
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                        <span className="material-symbols-outlined text-lg">local_shipping</span>
+                      </div>
                       <div>
-                        <p className="text-[10px] font-black text-zinc-800 uppercase tracking-tight">
-                          ¿Transferir a algún Almacén?
+                        <p className="text-[11px] font-black text-on-surface uppercase tracking-tight font-headline">
+                          ¿Transferir a otro Almacén / Sucursal?
                         </p>
-                        <p className="text-[9px] text-zinc-400 font-bold uppercase">
-                          El producto intermedio puede ser despachado inmediatamente.
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase">
+                          El producto intermedio puede despacharse inmediatamente.
                         </p>
                       </div>
                     </div>
@@ -682,170 +757,197 @@ export const RegistroProduccion: React.FC = () => {
                   </div>
 
                   {shouldTransfer && (
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end animate-in zoom-in-95 duration-200">
-                      <div className="md:col-span-8 space-y-1">
-                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">
-                          Seleccione el Almacén de Destino
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end animate-in zoom-in-95 duration-200">
+                      <div className="sm:col-span-8 space-y-1.5">
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1 font-headline">
+                          Almacén de Destino *
                         </label>
                         <Autocomplete
-                          options={warehouses}
+                          options={allWarehouses.filter(
+                            (w) => w.ID_PLANTA_ALMACEN !== selectedWarehouse?.ID_PLANTA_ALMACEN
+                          )}
+                          getOptionLabel={(opt) => opt.DESCRICION || opt.nombre || `Almacén #${opt.ID_PLANTA_ALMACEN}`}
                           value={selectedBranch}
-                          onChange={(_, v) => setSelectedBranch(v)}
+                          onChange={(_, val) => setSelectedBranch(val)}
                           renderInput={(params) => (
                             <TextField
                               {...params}
                               size="small"
-                              placeholder="Ej: Almacén de Repostería"
+                              placeholder="Seleccionar almacén destino..."
                               sx={{
                                 '& .MuiOutlinedInput-root': {
                                   borderRadius: '12px',
-                                  bgcolor: 'white'
+                                  bgcolor: 'var(--surface, #ffffff)'
                                 }
                               }}
                             />
                           )}
                         />
                       </div>
-                      <div className="md:col-span-4">
-                        <button
-                          onClick={handleAddProduct}
-                          disabled={!selectedProduct || !selectedBranch || !quantity || Number(quantity) <= 0}
-                          className={`w-full h-11 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${!selectedProduct || !selectedBranch || !quantity || Number(quantity) <= 0
-                              ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed border border-zinc-200'
-                              : 'bg-zinc-900 hover:bg-primary text-white shadow-lg hover:scale-[1.02] active:scale-[0.98]'
-                            }`}
-                        >
-                          Añadir con Despacho
-                        </button>
-                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Flujo: PRODUCTO FINAL -> Elegir Área obligatoriamente */}
+              {/* Flujo Final: Área de Destino Obligatoria */}
               {prodType === 'final' && (
-                <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 grid grid-cols-1 md:grid-cols-12 gap-4 items-end animate-in slide-in-from-top-2 duration-300">
-                  <div className="md:col-span-8 space-y-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="material-symbols-outlined text-zinc-400 text-sm">business</span>
-                      <label className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">
-                        Área de Destino Obligatoria
-                      </label>
-                    </div>
-                    <Autocomplete
-                      options={areas}
-                      value={selectedArea}
-                      onChange={(_, v) => setSelectedArea(v)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          size="small"
-                          placeholder="Seleccionar área (Ej: PLANTA)..."
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: '12px',
-                              bgcolor: 'white'
-                            }
-                          }}
-                        />
-                      )}
-                    />
+                <div className="p-4 bg-surface-variant/40 dark:bg-zinc-850/40 rounded-2xl border border-outline-variant/60 space-y-3">
+                  <div className="flex items-center gap-2 text-primary">
+                    <span className="material-symbols-outlined text-lg">business</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest font-headline">
+                      Área de Destino Obligatoria
+                    </span>
                   </div>
-                  <div className="md:col-span-4">
-                    <button
-                      onClick={handleAddProduct}
-                      disabled={!selectedProduct || !selectedArea || !quantity || Number(quantity) <= 0}
-                      className={`w-full h-11 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${!selectedProduct || !selectedArea || !quantity || Number(quantity) <= 0
-                          ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed border border-zinc-200'
-                          : 'bg-zinc-900 hover:bg-primary text-white shadow-lg hover:scale-[1.02] active:scale-[0.98]'
-                        }`}
-                    >
-                      Añadir Producto Final
-                    </button>
-                  </div>
+                  <Autocomplete
+                    options={areas}
+                    getOptionLabel={(opt) => opt.NOMBRE || `Área #${opt.ID_AREA}`}
+                    value={selectedArea}
+                    onChange={(_, val) => setSelectedArea(val)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        size="small"
+                        placeholder="Seleccionar área destino..."
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: '12px',
+                            bgcolor: 'var(--surface, #ffffff)'
+                          }
+                        }}
+                      />
+                    )}
+                  />
                 </div>
               )}
+
+              {/* Botón Añadir a la Lista */}
+              <div className="flex justify-end pt-2">
+                <Button
+                  variant="primary"
+                  size="md"
+                  icon="add_circle"
+                  onClick={handleAddProduct}
+                  disabled={!selectedReceta || !quantity || Number(quantity) <= 0}
+                  className="!h-11 !px-8 shadow-lg shadow-primary/20"
+                >
+                  Añadir a la Orden de Producción
+                </Button>
+              </div>
             </div>
           </div>
 
-          {/* STEP 03: Lista de Producción Agregada */}
-          <div className={`p-6 bg-white rounded-[2.5rem] border border-zinc-100 shadow-sm space-y-6 transition-all duration-300 ${productionList.length === 0 ? 'opacity-30' : ''}`}>
-            <StepBadge num="03" label="Lista de Producción Actual" />
+          {/* PASO 03: Lista de Producción Agregada */}
+          <div
+            className={`p-6 bg-surface dark:bg-zinc-900 rounded-[2rem] border border-outline-variant/60 dark:border-zinc-800 shadow-sm space-y-6 transition-all duration-300 ${productionList.length === 0 ? 'opacity-40' : ''
+              }`}
+          >
+            <StepBadge num="03" label="Lista de Productos en Esta Orden" />
 
             {productionList.length === 0 ? (
-              <div className="text-center py-12 text-zinc-300 space-y-4">
-                <span className="material-symbols-outlined text-5xl">inventory_2</span>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em]">
-                  No hay productos en la orden de producción
+              <div className="text-center py-12 text-on-surface-variant/50 space-y-3">
+                <span className="material-symbols-outlined text-5xl opacity-40">inventory_2</span>
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] font-headline">
+                  No hay productos en la orden de producción actual
+                </p>
+                <p className="text-[10px] text-on-surface-variant/70 font-medium">
+                  Configura arriba una receta y haz clic en &quot;Añadir a la Orden&quot;.
                 </p>
               </div>
             ) : (
-              <div className="overflow-hidden border border-zinc-100 rounded-3xl">
-                <div className="overflow-x-auto custom-scrollbar">
-                  <table className="w-full text-left border-collapse min-w-[700px]">
+              <div className="bg-surface rounded-2xl border border-outline-variant/60 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto scrollbar-thin">
+                  <table className="w-full text-left border-collapse min-w-[650px]">
                     <thead>
-                      <tr className="bg-zinc-50/70 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400 border-b border-zinc-100">
-                        <td className="px-6 py-4">Producto</td>
-                        <td className="px-6 py-4 text-center">Tipo</td>
-                        <td className="px-6 py-4 text-center">Cantidad</td>
-                        <td className="px-6 py-4">Destino / Despacho</td>
-                        <td className="px-6 py-4 text-right">Quitar</td>
+                      <tr className="bg-surface-variant/40 border-b border-outline-variant/60">
+                        <td className="pl-5 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant whitespace-nowrap">
+                          N°
+                        </td>
+                        <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
+                          Producto / Receta
+                        </td>
+                        <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant text-center whitespace-nowrap">
+                          Tipo
+                        </td>
+                        <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant text-center whitespace-nowrap">
+                          Cantidad
+                        </td>
+                        <td className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant whitespace-nowrap">
+                          Destino / Despacho
+                        </td>
+                        <td className="pr-5 pl-2 py-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant text-right whitespace-nowrap">
+                          Acción
+                        </td>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-50 text-xs">
-                      {productionList.map((item) => (
-                        <tr key={item.tempId} className="hover:bg-zinc-50/30 transition-all text-zinc-700 font-bold group">
-                          <td className="px-6 py-4">
+                    <tbody className="divide-y divide-outline-variant/30 text-xs">
+                      {productionList.map((item, idx) => (
+                        <tr
+                          key={item.tempId}
+                          className="hover:bg-surface-variant/30 transition-colors group"
+                        >
+                          <td className="pl-5 pr-2 py-3 font-black text-xs text-primary whitespace-nowrap">
+                            {idx + 1}
+                          </td>
+                          <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-xl bg-zinc-50 flex items-center justify-center text-primary border border-zinc-100">
-                                <span className="material-symbols-outlined text-lg">
-                                  {item.product.icon}
+                              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-base">
+                                  {item.isIntermediate ? 'inventory_2' : 'star'}
                                 </span>
                               </div>
-                              <span className="font-black text-zinc-900 uppercase text-[11px] tracking-tight">
-                                {item.product.name}
-                              </span>
+                              <div>
+                                <p className="font-black text-on-surface uppercase text-[11px] tracking-tight font-headline">
+                                  {item.receta.PRODUCTO || item.receta.NOMBRE}
+                                </p>
+                                <p className="text-[9px] text-on-surface-variant font-bold">
+                                  {item.receta.PRODUCTOS?.length || 0} insumos requeridos
+                                </p>
+                              </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
                             <span
-                              className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${item.product.isIntermediate
-                                  ? 'bg-blue-50 text-blue-600 border border-blue-100'
-                                  : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                              className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${item.isIntermediate
+                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                                 }`}
                             >
-                              {item.product.isIntermediate ? 'Intermedio' : 'Final'}
+                              {item.isIntermediate ? 'Intermedio' : 'Final'}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-center font-black text-zinc-900">
-                            {item.qty} {item.product.unit}
-                          </td>
-                          <td className="px-6 py-4 uppercase text-[9px]">
-                            {item.destType === 'area' ? (
-                              <span className="flex items-center gap-1 text-zinc-500 font-bold">
-                                <span className="material-symbols-outlined text-sm text-zinc-400">
-                                  business
-                                </span>
-                                Área: {item.destination}
+                          <td className="px-4 py-3 text-center font-black text-on-surface whitespace-nowrap">
+                            <span className="text-xs">
+                              {item.qty} {item.receta.UNIDAD_MEDIDA || 'uds'}
+                            </span>
+                            {item.waste > 0 && (
+                              <span className="block text-[9px] text-rose-500 font-bold">
+                                Merma: {item.waste}
                               </span>
-                            ) : item.destType === 'branch' ? (
-                              <span className="flex items-center gap-1 text-primary font-black">
-                                <span className="material-symbols-outlined text-sm text-primary/60">
-                                  local_shipping
-                                </span>
-                                Traspaso: {item.destination}
-                              </span>
-                            ) : (
-                              <span className="text-zinc-400 italic">No transferido</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-4 py-3 uppercase text-[10px]">
+                            {item.destType === 'area' && item.destinationArea ? (
+                              <span className="flex items-center gap-1.5 text-on-surface-variant font-bold">
+                                <span className="material-symbols-outlined text-sm text-primary">business</span>
+                                {item.destinationArea.NOMBRE}
+                              </span>
+                            ) : item.destType === 'branch' && item.destinationBranch ? (
+                              <span className="flex items-center gap-1.5 text-primary font-black">
+                                <span className="material-symbols-outlined text-sm">local_shipping</span>
+                                {item.destinationBranch.DESCRICION || item.destinationBranch.nombre}
+                              </span>
+                            ) : (
+                              <span className="text-on-surface-variant/60 italic font-medium">Almacén local</span>
+                            )}
+                          </td>
+                          <td className="pr-5 pl-2 py-3 text-right whitespace-nowrap">
                             <button
+                              type="button"
                               onClick={() => handleRemoveProduct(item.tempId)}
-                              className="w-8 h-8 rounded-lg text-rose-300 hover:text-rose-600 hover:bg-rose-50 transition-all inline-flex items-center justify-center"
+                              title="Remover de la orden"
+                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-600 hover:text-white transition-all inline-flex items-center justify-center font-bold cursor-pointer"
                             >
-                              <span className="material-symbols-outlined text-lg">delete</span>
+                              <span className="material-symbols-outlined text-[14px] sm:text-base">delete</span>
                             </button>
                           </td>
                         </tr>
@@ -858,160 +960,145 @@ export const RegistroProduccion: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: High Fidelity Consolidated Stock Analysis (4/12 grid) */}
-        <div className="lg:col-span-4">
+        {/* Columna Derecha: Balance Consolidado de Stock en Tiempo Real (4/12) */}
+        <div className="lg:col-span-4 sticky top-6">
           <div
-            className={`bg-zinc-900 text-white rounded-[2.5rem] p-6 md:p-8 shadow-2xl transition-all duration-500 border ${hasConfirmedMissingStock
-                ? 'border-rose-500/40 ring-4 ring-rose-500/10'
-                : productionList.length > 0
-                  ? 'border-emerald-500/40 ring-4 ring-emerald-500/10'
-                  : 'border-zinc-800'
+            className={`bg-zinc-900 text-white rounded-[2rem] p-6 shadow-2xl transition-all duration-500 border ${hasConfirmedMissingStock
+              ? 'border-rose-500/50 ring-4 ring-rose-500/15'
+              : productionList.length > 0
+                ? 'border-emerald-500/50 ring-4 ring-emerald-500/15'
+                : 'border-zinc-800'
               }`}
           >
             <StepBadge num="04" label="Consolidado de Insumos" />
 
-            {productionList.length === 0 && !selectedProduct ? (
-              <div className="flex flex-col items-center justify-center h-[350px] text-center space-y-6 opacity-30">
+            {productionList.length === 0 && !selectedReceta ? (
+              <div className="flex flex-col items-center justify-center h-[320px] text-center space-y-4 opacity-40">
                 <span className="material-symbols-outlined text-5xl">analytics</span>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-relaxed">
-                  Agrega productos a la orden para validar stock consolidado en tiempo real
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-relaxed font-headline">
+                  Agrega productos para validar el stock consolidado de insumos en tiempo real
                 </p>
               </div>
             ) : (
-              <div className="space-y-6 animate-in fade-in duration-300">
-
-                {/* Status Box */}
+              <div className="space-y-5 animate-in fade-in duration-300">
+                {/* Banner de Estado General */}
                 <div
                   className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${hasTotalMissingStock
-                      ? 'bg-rose-500/20 border-rose-500/30'
-                      : 'bg-emerald-500/20 border-emerald-500/30'
+                    ? 'bg-rose-500/20 border-rose-500/40 text-rose-200'
+                    : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
                     }`}
                 >
                   <div
-                    className={`w-11 h-11 rounded-xl flex items-center justify-center ${hasTotalMissingStock
-                        ? 'bg-rose-500 animate-pulse'
-                        : 'bg-emerald-500'
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center ${hasTotalMissingStock ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'
                       } text-white shadow-lg shrink-0`}
                   >
-                    <span className="material-symbols-outlined">
+                    <span className="material-symbols-outlined text-lg">
                       {hasTotalMissingStock ? 'warning' : 'verified'}
                     </span>
                   </div>
                   <div>
-                    <p className="text-[8px] font-black uppercase text-white/40 tracking-widest">
-                      Estado del Almacén
+                    <p className="text-[9px] font-black uppercase text-white/50 tracking-widest font-headline">
+                      Disponibilidad de Insumos
                     </p>
-                    <p className="text-[11px] font-black uppercase tracking-tight">
-                      {hasTotalMissingStock
-                        ? 'Insumos Insuficientes'
-                        : 'Stock Totalmente Disponible'}
+                    <p className="text-xs font-black uppercase tracking-tight font-headline">
+                      {hasTotalMissingStock ? 'Insumos Insuficientes' : 'Stock Totalmente Disponible'}
                     </p>
                   </div>
                 </div>
 
-                {/* Explicación de stock */}
                 {hasTotalMissingStock && (
-                  <p className="text-[9px] text-rose-300 font-bold uppercase tracking-tight bg-rose-950/40 p-3 rounded-xl border border-rose-950">
-                    ⚠️ Hay ingredientes faltantes. Agrega stock al almacén o reduce las cantidades para poder registrar.
+                  <p className="text-[10px] text-rose-300 font-bold uppercase tracking-tight bg-rose-950/50 p-3 rounded-xl border border-rose-900/60 leading-relaxed">
+                    ⚠️ Hay insumos faltantes en el almacén. Reduce las cantidades producidas para poder registrar la orden.
                   </p>
                 )}
 
-                {/* Lista de Insumos Consolidados */}
-                <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                {/* Lista de Insumos y Progreso de Stock */}
+                <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1 scrollbar-thin">
                   {aggregatedStockReport.map((ingredient, idx) => (
                     <div
                       key={idx}
-                      className={`p-3.5 rounded-2xl border transition-all relative overflow-hidden ${ingredient.sufficient
-                          ? 'bg-white/5 border-white/5'
-                          : 'bg-rose-500/10 border-rose-500/30'
+                      className={`p-3.5 rounded-2xl border transition-all ${ingredient.sufficient
+                        ? 'bg-white/5 border-white/10'
+                        : 'bg-rose-500/15 border-rose-500/40'
                         }`}
                     >
-                      {/* Badge Vista Previa si es el item que se está editando pero no guardado */}
-                      {selectedProduct &&
-                        !productionList.some((p) => p.product.id === selectedProduct.id) &&
-                        selectedProduct.recipe.some((r) => r.item === ingredient.name) && (
-                          <div className="absolute top-0 right-0 px-2 py-0.5 bg-primary/20 text-primary text-[7px] font-black uppercase tracking-tight rounded-bl-lg">
-                            Vista Previa
-                          </div>
-                        )}
-
-                      <div className="flex justify-between items-center mb-2">
+                      <div className="flex justify-between items-center mb-1.5">
                         <span
-                          className={`text-[9px] font-black uppercase tracking-widest ${ingredient.sufficient ? 'text-zinc-300' : 'text-rose-400'
+                          className={`text-[10px] font-black uppercase tracking-wider font-headline ${ingredient.sufficient ? 'text-zinc-200' : 'text-rose-400'
                             }`}
                         >
                           {ingredient.name}
                         </span>
                         <span
-                          className={`material-symbols-outlined text-[16px] ${ingredient.sufficient ? 'text-emerald-400' : 'text-rose-500'
+                          className={`material-symbols-outlined text-base ${ingredient.sufficient ? 'text-emerald-400' : 'text-rose-500'
                             }`}
                         >
                           {ingredient.sufficient ? 'check_circle' : 'cancel'}
                         </span>
                       </div>
 
-                      <div className="flex justify-between text-[11px] font-black tracking-tight text-white">
+                      <div className="flex justify-between text-xs font-black tracking-tight text-white">
                         <div className="flex flex-col">
-                          <span className="text-[7px] text-white/30 uppercase tracking-wider">
+                          <span className="text-[8px] text-white/40 uppercase tracking-wider">
                             Requerido
                           </span>
-                          <span>{ingredient.required.toFixed(2)}</span>
+                          <span>
+                            {ingredient.required.toFixed(2)} {ingredient.unit}
+                          </span>
                         </div>
                         <div className="flex flex-col items-end">
-                          <span className="text-[7px] text-white/30 uppercase tracking-wider">
+                          <span className="text-[8px] text-white/40 uppercase tracking-wider">
                             Disponible
                           </span>
                           <span
                             className={
-                              ingredient.sufficient ? 'text-zinc-300' : 'text-rose-500'
+                              ingredient.sufficient ? 'text-zinc-300' : 'text-rose-400'
                             }
                           >
-                            {ingredient.available.toFixed(2)}
+                            {ingredient.available.toFixed(2)} {ingredient.unit}
                           </span>
                         </div>
                       </div>
 
-                      {/* Progreso de Abasto */}
-                      <div className="mt-2 h-1 bg-white/10 rounded-full overflow-hidden">
+                      {/* Barra de Progreso */}
+                      <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
                         <div
-                          className={`h-full ${ingredient.sufficient ? 'bg-emerald-500' : 'bg-rose-500'
+                          className={`h-full transition-all duration-300 ${ingredient.sufficient ? 'bg-emerald-500' : 'bg-rose-500'
                             }`}
                           style={{
                             width: `${Math.min(
-                              (ingredient.available / ingredient.required) * 100,
+                              (ingredient.available / (ingredient.required || 1)) * 100,
                               100
                             )}%`
                           }}
-                        ></div>
+                        />
                       </div>
 
-                      {/* Cantidad Faltante */}
                       {!ingredient.sufficient && (
-                        <p className="text-[8px] text-rose-400 font-black uppercase tracking-widest mt-1.5 text-right">
-                          Falta: {ingredient.deficit.toFixed(2)}
+                        <p className="text-[9px] text-rose-400 font-black uppercase tracking-wider mt-1.5 text-right">
+                          Déficit: -{ingredient.deficit.toFixed(2)} {ingredient.unit}
                         </p>
                       )}
                     </div>
                   ))}
                 </div>
 
-                {/* Botón de Registro */}
+                {/* Botón Principal de Registro de Producción */}
                 <div className="pt-4 border-t border-zinc-800">
-                  <button
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    icon="save_as"
                     onClick={handleRegisterProduction}
-                    disabled={hasConfirmedMissingStock || productionList.length === 0}
-                    className={`w-full h-14 rounded-2xl font-black uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-3 ${hasConfirmedMissingStock || productionList.length === 0
-                        ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-700/50'
-                        : 'bg-primary text-white shadow-xl shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]'
-                      }`}
+                    disabled={hasConfirmedMissingStock || productionList.length === 0 || isSubmitting}
+                    className="w-full !h-12 !rounded-2xl shadow-xl shadow-primary/30"
                   >
-                    <span className="material-symbols-outlined text-lg">save_as</span>
-                    Registrar Producción
-                  </button>
+                    {isSubmitting ? 'Registrando...' : 'Registrar Producción'}
+                  </Button>
 
                   {hasConfirmedMissingStock && (
-                    <p className="text-[7px] text-rose-400 font-black uppercase text-center mt-3 tracking-widest animate-pulse">
-                      * El botón está bloqueado por insumos insuficientes en la lista activa
+                    <p className="text-[9px] text-rose-400 font-black uppercase text-center mt-2 tracking-wider animate-pulse">
+                      * Registro bloqueado por falta de insumos
                     </p>
                   )}
                 </div>

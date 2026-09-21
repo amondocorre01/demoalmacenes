@@ -33,6 +33,7 @@ const staticMenuItems: ApiMenuItem[] = [
   { id: 314, nombre: 'Recetas Intermedias', ruta: '/almacen/recetas-intermedias', icono: 'cookie', orden: 4 },
   { id: 315, nombre: 'Lista General de Recetas', ruta: '/almacen/lista-recetas', icono: 'menu_book', orden: 5 },
   { id: 316, nombre: 'Productos intermedios', ruta: '/almacen/productos-intermedios', icono: 'inventory_2', orden: 6 },
+  { id: 317, nombre: 'Configuración Declaración', ruta: '/almacen/config-declaracion', icono: 'tune', orden: 7 },
 
   // ALMACÉN: OPERACIONES
   // { id: 321, nombre: 'Pedidos consolidados almacén', ruta: '/almacen/pedidos-consolidados-almacen', icono: 'inventory', orden: 7 },
@@ -61,11 +62,11 @@ const staticMenuItems: ApiMenuItem[] = [
   { id: 505, nombre: 'Lista precios insumos', ruta: '/compras/lista-precios', icono: 'sell', orden: 24 },
 
   // CONFIGURACIÓN
-  { id: 601, nombre: 'Registro de Producto', ruta: '/config/registro-producto', icono: 'add_box', orden: 25 },
-  { id: 610, nombre: 'Guía Registro de Producto', ruta: '/config/guia-registro', icono: 'chrome_reader_mode', orden: 26 },
+  //{ id: 601, nombre: 'Registro de Producto', ruta: '/config/registro-producto', icono: 'add_box', orden: 25 },
+  //{ id: 610, nombre: 'Guía Registro de Producto', ruta: '/config/guia-registro', icono: 'chrome_reader_mode', orden: 26 },
   { id: 602, nombre: 'Pre-Registro Insumos', ruta: '/config/pre-registro', icono: 'app_registration', orden: 27 },
-  { id: 603, nombre: 'Registro Grupo Producto', ruta: '/config/registro-grupo', icono: 'category', orden: 28 },
-  { id: 604, nombre: 'Registro Facturas Insumos', ruta: '/almacen/registro-facturas-insumos', icono: 'receipt_long', orden: 29 }
+  // { id: 603, nombre: 'Registro Grupo Producto', ruta: '/config/registro-grupo', icono: 'category', orden: 28 },
+  // { id: 604, nombre: 'Registro Facturas Insumos', ruta: '/almacen/registro-facturas-insumos', icono: 'receipt_long', orden: 29 }
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, onCloseMobile }) => {
@@ -233,17 +234,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, onClose
       } catch (error) {
         console.warn('[Sidebar] /menu no disponible o desactivado, usando menú fallback:', error);
 
-        const cacheKey = 'sidebar_menu_static';
-        const cachedMenu = sessionStorage.getItem(cacheKey);
-        if (cachedMenu) {
-          console.log('[Sidebar] Cargando menú estático desde caché...');
-          setMenuItems(JSON.parse(cachedMenu));
-          setLoading(false);
-          return;
-        }
-
-        const sortedFallback = staticMenuItems.sort((a, b) => (a.orden || 0) - (b.orden || 0));
-        sessionStorage.setItem(cacheKey, JSON.stringify(sortedFallback));
+        const sortedFallback = [...staticMenuItems].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        sessionStorage.setItem('sidebar_menu_static', JSON.stringify(sortedFallback));
         setMenuItems(sortedFallback);
       } finally {
         setLoading(false);

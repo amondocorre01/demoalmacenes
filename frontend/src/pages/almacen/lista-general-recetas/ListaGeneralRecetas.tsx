@@ -24,7 +24,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Autocomplete, TextField, Chip } from '@mui/material';
+import { Autocomplete, TextField, Chip, Tooltip } from '@mui/material';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
 import { showAlert } from '../../../config/alerts';
@@ -321,7 +321,8 @@ export const ListaGeneralRecetas: React.FC = () => {
           size="sm"
           icon="add"
           onClick={() => setIsAddModalOpen(true)}
-          className="!py-2 !px-5 shadow-lg shadow-primary/20"
+          //className="!py-2 !px-5 shadow-lg shadow-primary/20"
+          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
         >
           Asignar Receta
         </Button>
@@ -372,7 +373,7 @@ export const ListaGeneralRecetas: React.FC = () => {
           </div>
 
           {/* Botón Buscar */}
-          <div className="md:col-span-2">
+          {/* <div className="md:col-span-2">
             <Button
               variant="primary"
               size="md"
@@ -383,6 +384,18 @@ export const ListaGeneralRecetas: React.FC = () => {
             >
               Buscar
             </Button>
+          </div> */}
+          <div className="flex items-center gap-3 shrink-0">
+            <Tooltip title="Buscar Receta del Producto Intermedio">
+              <button
+                type="button"
+                onClick={handleSearch}
+                disabled={isLoading || !selectedWarehouse || !selectedProduct}
+                className={`w-11 h-11 rounded-2xl bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-400 border border-primary/20 hover:bg-primary hover:text-white transition-all flex items-center justify-center cursor-pointer shadow-inner ${isLoading || !selectedWarehouse || !selectedProduct ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <span className="material-symbols-outlined text-2xl font-bold">search</span>
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
