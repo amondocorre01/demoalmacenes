@@ -290,7 +290,7 @@ export const ListaAlmacenes: React.FC = () => {
   const handleSaveWarehouse = async (formData: {
     almacen?: string;
     nombre?: string;
-    produccion: boolean;
+    estado_produccion: boolean;
     activo: boolean;
     gestion_pi: number;
     solicitud_planta: number;
@@ -311,7 +311,7 @@ export const ListaAlmacenes: React.FC = () => {
       const res = await updateAlmacen(editingWarehouse.ID_PLANTA_ALMACEN, {
         almacen: nombreAlmacen,
         estado: formData.activo ? 1 : 0,
-        estado_produccion: formData.produccion ? 1 : 0,
+        estado_produccion: formData.estado_produccion ? 1 : 0,
         gestion_pi: formData.gestion_pi,
         solicitud_planta: formData.solicitud_planta,
         entrega_planta: formData.entrega_planta,

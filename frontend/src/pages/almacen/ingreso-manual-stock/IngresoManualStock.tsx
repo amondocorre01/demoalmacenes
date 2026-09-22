@@ -28,6 +28,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import { showAlert } from '../../../config/alerts';
 import {
   useIngresoManualStockServices,
@@ -158,6 +160,55 @@ export const IngresoManualStock: React.FC = () => {
     return `${d}/${m}/${y}`;
   };
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'PRODUCTO / INSUMO', key: 'producto', width: 28 },
+      { header: 'DETALLE PRODUCTO', key: 'detalle', width: 25 },
+      { header: 'CANT. INGRESADA', key: 'cantidad', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD MEDIDA', key: 'unidad', width: 14, align: 'center' as const },
+      { header: 'VENCIMIENTO', key: 'vencimiento', width: 16, align: 'center' as const },
+      { header: 'REGISTRADO POR', key: 'usuario', width: 22 },
+    ];
+
+    const rows = filteredItems.map((item, idx) => ({
+      index: idx + 1,
+      producto: item.PRODUCTO || '-',
+      detalle: item.PRODUCTO_DETALLE || item.PRODUCTO || '-',
+      cantidad: Number(item.CANTIDAD || 0),
+      unidad: item.UNIDAD_MEDIDA || '-',
+      vencimiento: formatDate(item.FECHA_VENCIMIENTO),
+      usuario: item.USUARIO_REGISTRA || 'SISTEMA',
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Ingresos_Manuales_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Ingresos',
+      title: 'HISTORIAL DE INGRESOS MANUALES DE STOCK',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'HISTORIAL DE INGRESOS MANUALES DE STOCK',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full space-y-6">
       {/* Componente Centralizado LoadingOverlay */}
@@ -179,21 +230,24 @@ export const IngresoManualStock: React.FC = () => {
         </div>
 
         {/* Botón de Acción Principal en Cabecera */}
-        <Button
-          variant="primary"
-          size="md"
-          icon="add"
-          onClick={() => {
-            /*if (warehouses.length === 0) {
-              showAlert.warning('Sin Almacenes', 'No se encontraron almacenes configurados para registrar ingresos.');
-              return;
-            }*/
-            setIsModalOpen(true);
-          }}
-          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
-        >
-          Nuevo Ingreso
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredItems.length === 0}
+          />
+          <Button
+            variant="primary"
+            size="md"
+            icon="add"
+            onClick={() => {
+              setIsModalOpen(true);
+            }}
+            className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+          >
+            Nuevo Ingreso
+          </Button>
+        </div>
       </div>
 
       {/* Tarjetas KPI de Resumen */}

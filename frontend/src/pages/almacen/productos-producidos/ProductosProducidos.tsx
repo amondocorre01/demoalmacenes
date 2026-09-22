@@ -32,6 +32,8 @@ import dayjs, { Dayjs } from 'dayjs';
 import { Autocomplete, TextField } from '@mui/material';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import {
   useProductosProducidosServices,
   AlmacenItem,
@@ -185,6 +187,69 @@ export const ProductosProducidos: React.FC = () => {
     return filteredProducts.slice(start, start + pageSize);
   }, [filteredProducts, page, pageSize]);
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'FECHA REGISTRO', key: 'fechaReg', width: 16 },
+      { header: 'HORA', key: 'horaReg', width: 12 },
+      { header: 'PRODUCTO / RECETA', key: 'receta', width: 30 },
+      { header: 'TIPO', key: 'tipo', width: 14, align: 'center' as const },
+      { header: 'ALMACÉN', key: 'almacen', width: 22 },
+      { header: 'ÁREA', key: 'area', width: 20 },
+      { header: 'CANTIDAD PRODUCIDA', key: 'cantidad', width: 18, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD', key: 'unidad', width: 10, align: 'center' as const },
+      { header: 'MERMA / DESPERDICIO', key: 'merma', width: 18, align: 'right' as const, format: 'number' as const },
+      { header: 'USUARIO', key: 'usuario', width: 22 },
+    ];
+
+    const rows = filteredProducts.map((item, idx) => {
+      const isIntermedio =
+        item.TIPO === 'Intermedio' ||
+        (item.ID_PRODUCTO_INTERMEDIO && item.ID_PRODUCTO_INTERMEDIO > 0);
+
+      return {
+        index: idx + 1,
+        fechaReg: formatDateDisplay(item.FECHA_REGISTRO),
+        horaReg: formatTimeDisplay(item.FECHA_REGISTRO, item.HORA_REGISTRO) || '-',
+        receta: item.RECETA_INTERMEDIO || item.RECETA || '-',
+        tipo: isIntermedio ? 'Intermedio' : 'Final',
+        almacen: item.ALMACEN || selectedWarehouse?.DESCRICION || '-',
+        area: item.AREA || '-',
+        cantidad: Number(item.CANTIDAD_PRODUCIDA ?? 0),
+        unidad: item.UNIDAD_MEDIDA || '',
+        merma: Number(item.CANTIDAD_DESPERDICIO ?? 0),
+        usuario: item.USUARIO || item.NOMBRE_USUARIO || '-',
+      };
+    });
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Productos_Producidos_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Produccion',
+      title: 'HISTORIAL DE PRODUCTOS PRODUCIDOS',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'HISTORIAL DE PRODUCTOS PRODUCIDOS',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
       <LoadingOverlay show={isLoading} message="Cargando registros de productos producidos..." />
@@ -199,7 +264,12 @@ export const ProductosProducidos: React.FC = () => {
             Historial de producción y control de inventario de recetas
           </p>
         </div>
-        <div className="flex items-center gap-3 self-end sm:self-auto">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredProducts.length === 0}
+          />
           <Button
             variant="primary"
             size="md"

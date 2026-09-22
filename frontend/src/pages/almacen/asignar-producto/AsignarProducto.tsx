@@ -21,6 +21,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
+import dayjs from 'dayjs';
 import { showAlert } from '../../../config/alerts';
 import { Autocomplete, TextField, Chip } from '@mui/material';
 import { useAsignarProductoServices } from './services/useAsignarProducto';
@@ -182,6 +185,49 @@ export const AsignarProducto: React.FC = () => {
     }
   };
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'INSUMO / PRODUCTO', key: 'name', width: 35 },
+      { header: 'CÓDIGO', key: 'code', width: 16 },
+      { header: 'CATEGORÍA', key: 'category', width: 22 },
+      { header: 'ESTADO ASIGNACIÓN', key: 'status', width: 18, align: 'center' as const },
+    ];
+
+    const rows = filteredProducts.map((p, idx) => ({
+      index: idx + 1,
+      name: p.name || '-',
+      code: p.code || '-',
+      category: p.category || '-',
+      status: p.enabled ? 'HABILITADO' : 'INHABILITADO',
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Asignacion_Productos_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Asignacion',
+      title: 'ASIGNACIÓN DE PRODUCTOS POR ALMACÉN',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Total productos: ${filteredProducts.length}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'ASIGNACIÓN DE PRODUCTOS POR ALMACÉN',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Total productos: ${filteredProducts.length}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
       <LoadingOverlay show={isLoading} message="Cargando información de asignación..." />
@@ -195,6 +241,14 @@ export const AsignarProducto: React.FC = () => {
           <p className="text-[10px] font-black text-on-surface-variant mt-1 font-body">
             Gestión centralizada de disponibilidad e insumos autorizados por unidad de almacén.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredProducts.length === 0}
+          />
         </div>
       </div>
 

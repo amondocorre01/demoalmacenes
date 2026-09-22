@@ -44,6 +44,8 @@ import {
 import { ModalSeleccionarAlmacenes } from './components/ModalSeleccionarAlmacenes';
 import { ModalNuevoDesperdicioManual } from './components/ModalNuevoDesperdicioManual';
 import { ModalVerImagenDesperdicio } from './components/ModalVerImagenDesperdicio';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf, TableColumnConfig } from '../../../utils/exportTableHelper';
 
 const ALL_WAREHOUSES_OPTION: AlmacenItem = {
   ID_PLANTA_ALMACEN: 0,
@@ -201,57 +203,73 @@ export const DesperdicioManual: React.FC = () => {
     }
   };
 
-  // Exportar a CSV
-  const handleExportCSV = () => {
-    if (itemsList.length === 0) {
-      showAlert.warning('Sin datos', 'No hay registros para exportar.');
-      return;
-    }
+  const exportColumns: TableColumnConfig[] = [
+    { header: 'N°', width: 45, align: 'center', type: 'number' },
+    { header: 'Almacén', width: 140, align: 'left' },
+    { header: 'Fecha Registro', width: 110, align: 'center' },
+    { header: 'Fecha Vencimiento', width: 110, align: 'center' },
+    { header: 'Producto / Insumo', width: 200, align: 'left' },
+    { header: 'Detalle', width: 160, align: 'left' },
+    { header: 'Cantidad', width: 80, align: 'right', type: 'number' },
+    { header: 'U. Medida', width: 70, align: 'center' },
+    { header: 'P. Consumo Int.', width: 100, align: 'right', type: 'currency' },
+    { header: 'Total Asumido (Bs.)', width: 115, align: 'right', type: 'currency' },
+    { header: 'Usuario Registra', width: 160, align: 'left' },
+    { header: 'Motivo / Observación', width: 200, align: 'left' },
+  ];
 
-    const headers = [
-      'N°',
-      'Almacén',
-      'Fecha Registro',
-      'Fecha Vencimiento',
-      'Producto',
-      'Detalle',
-      'Cantidad',
-      'Unidad Medida',
-      'Precio Consumo Int (Bs)',
-      'Total Asumido (Bs)',
-      'Usuario',
-      'Motivo / Observación',
-    ];
+  const getExportData = () => {
+    return itemsList.map((item, idx) => {
+      const cant = Number(item.CANTIDAD || 0);
+      const pUnit = Number(item.PRECIO_PRODUCTO ?? item.PRECIO_CONSUMO_INTERNO ?? item.PRECIO ?? 0);
+      const tot = Number(item.PRECIO_ASUMIDO_EMPLEADO ?? item.TOTAL_ASUMIDO ?? item.TOTAL ?? cant * pUnit);
 
-    const rows = itemsList.map((item, idx) => [
-      idx + 1,
-      `"${item.ALMACEN || item.DESCRICION || '-'}"`,
-      `"${item.FECHA_REGISTRO ? item.FECHA_REGISTRO.replace('T', ' ').substring(0, 19) : '-'}"`,
-      `"${formatDateDisplay(item.FECHA_VENCIMIENTO)}"`,
-      `"${item.PRODUCTO || item.NOMBRE_PRODUCTO || '-'}"`,
-      `"${item.NOMBRE_DETALLE || item.DETALLE || '-'}"`,
-      Number(item.CANTIDAD || 0).toFixed(2),
-      `"${item.UNIDAD_MEDIDA || item.MEDIDA || '-'}"`,
-      Number(item.PRECIO_PRODUCTO ?? item.PRECIO_CONSUMO_INTERNO ?? item.PRECIO ?? 0).toFixed(2),
-      Number(item.PRECIO_ASUMIDO_EMPLEADO ?? item.TOTAL_ASUMIDO ?? item.TOTAL ?? 0).toFixed(2),
-      `"${item.USUARIO_REGISTRA || item.USUARIO || '-'}"`,
-      `"${item.OBSERVACION || item.DETALLE || '-'}"`,
-    ]);
+      return [
+        idx + 1,
+        item.ALMACEN || item.DESCRICION || '-',
+        item.FECHA_REGISTRO ? item.FECHA_REGISTRO.replace('T', ' ').substring(0, 19) : '-',
+        formatDateDisplay(item.FECHA_VENCIMIENTO),
+        item.PRODUCTO || item.NOMBRE_PRODUCTO || '-',
+        item.NOMBRE_DETALLE || item.DETALLE || '-',
+        cant,
+        item.UNIDAD_MEDIDA || item.MEDIDA || '-',
+        pUnit,
+        tot,
+        item.USUARIO_REGISTRA || item.USUARIO || '-',
+        item.OBSERVACION || item.DETALLE || '-',
+      ];
+    });
+  };
 
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+  const handleExportExcel = () => {
+    const data = getExportData();
+    const fi = startDate ? startDate.format('DD/MM/YYYY') : '';
+    const ff = endDate ? endDate.format('DD/MM/YYYY') : '';
+    const totalMonto = itemsList.reduce((acc, curr) => acc + Number(curr.PRECIO_ASUMIDO_EMPLEADO ?? curr.TOTAL_ASUMIDO ?? curr.TOTAL ?? 0), 0);
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute(
-      'download',
-      `Desperdicios_Manuales_${dayjs().format('YYYYMMDD_HHmmss')}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportTableToExcel({
+      title: 'REGISTRO DE DESPERDICIO MANUAL',
+      subtitle: `RANGO: ${fi} AL ${ff}   |   ALMACENES: ${warehouseButtonLabel}`,
+      filename: `desperdicios_manuales_${dayjs().format('YYYYMMDD_HHmm')}`,
+      columns: exportColumns,
+      data,
+      totals: ['', '', '', '', '', 'TOTAL GENERAL', '', '', '', totalMonto, '', ''],
+    });
+  };
+
+  const handleExportPdf = () => {
+    const data = getExportData();
+    const fi = startDate ? startDate.format('DD/MM/YYYY') : '';
+    const ff = endDate ? endDate.format('DD/MM/YYYY') : '';
+    const totalMonto = itemsList.reduce((acc, curr) => acc + Number(curr.PRECIO_ASUMIDO_EMPLEADO ?? curr.TOTAL_ASUMIDO ?? curr.TOTAL ?? 0), 0);
+
+    exportTableToPdf({
+      title: 'REGISTRO DE DESPERDICIO MANUAL',
+      subtitle: `RANGO: ${fi} AL ${ff}   |   ALMACENES: ${warehouseButtonLabel}`,
+      columns: exportColumns,
+      data,
+      totals: ['', '', '', '', '', 'TOTAL GENERAL', '', '', '', totalMonto, '', ''],
+    });
   };
 
   // Resumen del selector de almacenes para el botón
@@ -283,16 +301,11 @@ export const DesperdicioManual: React.FC = () => {
 
         {/* Acciones a la derecha */}
         <div className="flex items-center gap-2.5">
-          <Button
-            variant="secondary"
-            size="md"
-            icon="download"
-            onClick={handleExportCSV}
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
             disabled={itemsList.length === 0}
-            className="!h-10 !px-5 shadow-sm shrink-0"
-          >
-            Exportar CSV
-          </Button>
+          />
 
           <Button
             variant="primary"

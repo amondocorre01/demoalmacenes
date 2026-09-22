@@ -26,6 +26,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import {
   useDesperdicioInsumosServices,
   AlmacenItem,
@@ -185,6 +187,70 @@ export const DesperdicioInsumos: React.FC = () => {
     return itemsList.reduce((acc, curr) => acc + (Number(curr.CANTIDAD || 0) || 0), 0);
   }, [itemsList]);
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'ALMACÉN', key: 'almacen', width: 22 },
+      { header: 'FECHA REGISTRO', key: 'fechaReg', width: 16 },
+      { header: 'FECHA VENCIMIENTO', key: 'fechaVenc', width: 16 },
+      { header: 'PRODUCTO / INSUMO', key: 'producto', width: 30 },
+      { header: 'CANTIDAD', key: 'cantidad', width: 12, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD', key: 'unidad', width: 10, align: 'center' as const },
+      { header: 'P. CONSUMO INT.', key: 'precio', width: 16, align: 'right' as const, format: 'currency' as const },
+      { header: 'TOTAL ASUMIDO', key: 'total', width: 16, align: 'right' as const, format: 'currency' as const },
+      { header: 'USUARIO DESPERDICIA', key: 'usuario', width: 22 },
+    ];
+
+    const rows = filteredItems.map((item, idx) => {
+      const regDateTime = formatDateTimeDisplay(item.FECHA_REGISTRO);
+      const productName = item.PRODUCTO || item.NOMBRE_PRODUCTO || item.NOMBRE_DETALLE || '-';
+      const detailName = item.NOMBRE_DETALLE || '';
+      const displayProduct = detailName && detailName.toUpperCase() !== (item.PRODUCTO || item.NOMBRE_PRODUCTO || '').toUpperCase()
+        ? `${detailName} (${productName})`
+        : (detailName || productName);
+
+      return {
+        index: idx + 1,
+        almacen: item.ALMACEN || item.DESCRICION || '-',
+        fechaReg: `${regDateTime.date} ${regDateTime.time || ''}`.trim(),
+        fechaVenc: formatDateDisplay(item.FECHA_VENCIMIENTO),
+        producto: displayProduct,
+        cantidad: Number(item.CANTIDAD || 0),
+        unidad: item.UNIDAD_MEDIDA || item.MEDIDA || '-',
+        precio: Number(item.PRECIO_PRODUCTO ?? item.PRECIO_CONSUMO_INTERNO ?? item.PRECIO ?? 0),
+        total: Number(item.PRECIO_ASUMIDO_EMPLEADO ?? item.TOTAL_ASUMIDO ?? item.TOTAL ?? 0),
+        usuario: item.USUARIO_REGISTRA || item.USUARIO || '-',
+      };
+    });
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Desperdicio_Insumos_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Desperdicios',
+      title: 'REPORTE DE DESPERDICIO DE INSUMOS VENCIDOS',
+      subtitle: `Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'REPORTE DE DESPERDICIO DE INSUMOS VENCIDOS',
+      subtitle: `Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full space-y-2 p-2 sm:p-0 animate-in fade-in duration-300">
       <LoadingOverlay show={isLoading} message="Cargando desperdicio de insumos..." />
@@ -202,6 +268,11 @@ export const DesperdicioInsumos: React.FC = () => {
 
         {/* Acciones a la derecha */}
         <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredItems.length === 0}
+          />
           <Button
             variant="primary"
             size="md"

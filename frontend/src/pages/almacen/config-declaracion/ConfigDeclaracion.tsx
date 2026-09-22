@@ -22,6 +22,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
+import dayjs from 'dayjs';
 import { showAlert } from '../../../config/alerts';
 import {
   useConfiguracionDeclaracionServices,
@@ -174,6 +177,51 @@ const ConfigDeclaracion: React.FC = () => {
     return { total, configuredCount, pendingCount };
   }, [products]);
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'CATEGORÍA / GRUPO', key: 'categoria', width: 25 },
+      { header: 'PRODUCTO / DETALLE', key: 'producto', width: 30 },
+      { header: 'UNIDAD ESTÁNDAR', key: 'unidadE', width: 18 },
+      { header: 'UNIDAD ADECUACIÓN', key: 'unidadA', width: 18 },
+      { header: 'UNIDAD DECLARACIÓN', key: 'unidadD', width: 20 },
+    ];
+
+    const rows = filteredProducts.map((item, idx) => ({
+      index: idx + 1,
+      categoria: item.PRODUCTO || '-',
+      producto: item.NOMBRE_DETALLE || item.PRODUCTO || '-',
+      unidadE: item.UNIDAD_MEDIDA_E || '-',
+      unidadA: item.UNIDAD_MEDIDA_A || '-',
+      unidadD: item.UNIDAD_MEDIDA_D || item.UNIDAD_DECLARACION || 'Sin Asignar',
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Configuracion_Declaracion_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'ConfigDeclaracion',
+      title: 'CONFIGURACIÓN DE UNIDADES DE DECLARACIÓN',
+      subtitle: `Total productos: ${filteredProducts.length}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'CONFIGURACIÓN DE UNIDADES DE DECLARACIÓN',
+      subtitle: `Total productos: ${filteredProducts.length}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-6">
       {/* Loading Overlay */}
@@ -188,6 +236,14 @@ const ConfigDeclaracion: React.FC = () => {
           <p className="text-xs font-black text-on-surface-variant mt-1 font-body">
             Gestión de unidades de medida para la declaración de productos por grupo.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredProducts.length === 0}
+          />
         </div>
       </div>
 
@@ -348,9 +404,6 @@ const ConfigDeclaracion: React.FC = () => {
                 <td className="pl-4 pr-1 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap w-8">
                   N°
                 </td>
-                <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
-                  Categoría
-                </td>
                 <td className="px-2 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
                   Producto
                 </td>
@@ -396,18 +449,16 @@ const ConfigDeclaracion: React.FC = () => {
                         <span>{itemIndex}</span>
                       </td>
 
-                      {/* Grupo */}
-                      <td className="px-2 py-1 whitespace-nowrap">
-                        <span className="text-xs font-black uppercase tracking-tight text-on-surface font-headline block">
-                          {item.PRODUCTO || 'SIN GRUPO'}
-                        </span>
-                      </td>
-
-                      {/* Producto / Detalle */}
+                      {/* Producto & Categoría */}
                       <td className="px-2 py-1">
                         <span className="text-xs font-bold text-on-surface uppercase block leading-tight">
                           {item.NOMBRE_DETALLE || item.PRODUCTO}
                         </span>
+                        {item.PRODUCTO && (
+                          <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wide block mt-0.5">
+                            {item.PRODUCTO}
+                          </span>
+                        )}
                       </td>
 
                       {/* Unidad Estándar */}
@@ -458,7 +509,7 @@ const ConfigDeclaracion: React.FC = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-on-surface-variant">
+                  <td colSpan={5} className="py-12 text-center text-on-surface-variant">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">
                         inventory_2

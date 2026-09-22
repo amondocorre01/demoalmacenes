@@ -28,6 +28,8 @@ import { Autocomplete, TextField } from '@mui/material';
 import dayjs from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import { showAlert } from '../../../config/alerts';
 import {
   useDeclaracionInventarioServices,
@@ -241,6 +243,59 @@ export const DeclaracionInventario: React.FC = () => {
     })()
     : 'Sin registro previo';
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'PRODUCTO', key: 'producto', width: 28 },
+      { header: 'PRODUCTO FACTURADO', key: 'facturado', width: 25 },
+      { header: 'STOCK SISTEMA', key: 'stock', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD MEDIDA', key: 'unidad', width: 14, align: 'center' as const },
+      { header: 'MEDIDA NOTA', key: 'medidaNota', width: 14, align: 'center' as const },
+      { header: 'UNIDAD DECLARACIÓN', key: 'unidadDecl', width: 16, align: 'center' as const },
+      { header: 'CANT. DECLARADA', key: 'cantDeclarada', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'OBSERVACIÓN', key: 'observacion', width: 25 },
+    ];
+
+    const rows = filteredItems.map((item, idx) => ({
+      index: idx + 1,
+      producto: item.PRODUCTO || '-',
+      facturado: item.PRODUCTO_FACTURADO || item.FACTURADO || item.NOMBRE_FACTURADO || '-',
+      stock: Number(item.STOCK || 0),
+      unidad: item.UNIDAD_MEDIDA || item.UNIDAD_MEDIDA_E || '-',
+      medidaNota: item.MEDIDA_NOTA || item.UNIDAD_MEDIDA_A || '-',
+      unidadDecl: item.UNIDAD_MEDIDA_DECLARADA || item.UNIDAD_MEDIDA || '-',
+      cantDeclarada: item.cantidad_declarada === '' ? 0 : Number(item.cantidad_declarada || 0),
+      observacion: item.observacion_declaracion || item.OBSERVACION || '-',
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Declaracion_Inventario_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Declaracion',
+      title: 'DECLARACIÓN FÍSICA DE INVENTARIO',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Fecha: ${formattedCurrentDate}`,
+      columns,
+      rows,
+      totalsRow: true,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'DECLARACIÓN FÍSICA DE INVENTARIO',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Fecha: ${formattedCurrentDate}`,
+      columns,
+      rows,
+      totalsRow: true,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full space-y-6">
       {/* Componente Centralizado LoadingOverlay */}
@@ -264,16 +319,23 @@ export const DeclaracionInventario: React.FC = () => {
         </div>
 
         {/* Botón de Acción Principal en Cabecera */}
-        <Button
-          variant="primary"
-          size="md"
-          icon="save"
-          onClick={handleGuardarDeclaracion}
-          disabled={isLoading || isSaving || itemsList.length === 0 || isDocumentVerified}
-          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
-        >
-          {hasExistingDocument ? 'Actualizar Declaración' : 'Guardar Declaración'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredItems.length === 0}
+          />
+          <Button
+            variant="primary"
+            size="md"
+            icon="save"
+            onClick={handleGuardarDeclaracion}
+            disabled={isLoading || isSaving || itemsList.length === 0 || isDocumentVerified}
+            className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+          >
+            {hasExistingDocument ? 'Actualizar Declaración' : 'Guardar Declaración'}
+          </Button>
+        </div>
       </div>
 
       {/* Barra Superior de Filtros y Selectores (Estándar Oficial AGENTS.md) */}

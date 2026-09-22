@@ -30,9 +30,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import { showAlert } from '../../../config/alerts';
 import { useProductosIntermediosServices } from './services/useProductosIntermedios';
 import { ModalNuevoProductoIntermedio } from './components/ModalNuevoProductoIntermedio';
+import dayjs from 'dayjs';
 
 export const ProductosIntermedios: React.FC = () => {
   const location = useLocation();
@@ -151,8 +154,58 @@ export const ProductosIntermedios: React.FC = () => {
   const activeCount = productsList.filter(p => (p.ESTADO ?? p.estado ?? 1) === 1).length;
   const inactiveCount = totalCount - activeCount;
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'NOMBRE DEL PRODUCTO', key: 'nombre', width: 30 },
+      { header: 'NOTA / DETALLE', key: 'nota', width: 25 },
+      { header: 'DURACIÓN (DÍAS)', key: 'duracion', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: '% DESPERDICIO', key: 'desperdicio', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'PRODUCTO PRIMARIO', key: 'primario', width: 18, align: 'center' as const },
+      { header: 'ESTADO', key: 'estado', width: 16, align: 'center' as const },
+    ];
+
+    const rows = filteredProducts.map((item, idx) => {
+      const isActivo = (item.ESTADO ?? item.estado ?? 1) == 1;
+      return {
+        index: idx + 1,
+        nombre: item.NOMBRE || item.nombre || '-',
+        nota: item.NOTA || item.nota || '-',
+        duracion: Number(item.DURACION ?? item.duracion ?? 0),
+        desperdicio: Number(item.PORCENTAJE_DESPERDICIO ?? item.porcentaje_desperdicio ?? 0),
+        primario: (item.PROD_PRIMARIO || item.producto_primario || item.PRODUCTO_PRIMARIO) ? 'SÍ' : 'NO',
+        estado: isActivo ? 'HABILITADO' : 'INHABILITADO',
+      };
+    });
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Productos_Intermedios_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'ProdIntermedios',
+      title: 'CATÁLOGO DE PRODUCTOS INTERMEDIOS',
+      subtitle: `Total registros: ${rows.length}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'CATÁLOGO DE PRODUCTOS INTERMEDIOS',
+      subtitle: `Total registros: ${rows.length}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
-    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-6">
+    <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
       <LoadingOverlay show={isLoading} message="Cargando productos intermedios..." />
 
       {/* ── Cabecera Principal Estandarizada (AGENTS.md) ── */}
@@ -166,15 +219,22 @@ export const ProductosIntermedios: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="md"
-          icon="add_circle"
-          onClick={handleCreateNew}
-          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
-        >
-          Nuevo Producto
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredProducts.length === 0}
+          />
+          <Button
+            variant="primary"
+            size="md"
+            icon="add_circle"
+            onClick={handleCreateNew}
+            className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+          >
+            Nuevo Producto
+          </Button>
+        </div>
       </div>
 
       {/* ── Tarjetas de Métricas Compactas (AGENTS.md) ── */}
@@ -283,7 +343,7 @@ export const ProductosIntermedios: React.FC = () => {
               {paginatedProducts.length > 0 ? (
                 paginatedProducts.map((item, idx) => {
                   const globalIdx = (page - 1) * pageSize + idx + 1;
-                  const isActivo = (item.ESTADO ?? item.estado ?? 1) === 1;
+                  const isActivo = (item.ESTADO ?? item.estado ?? 1) == 1;
 
                   return (
                     <tr key={idx} className="hover:bg-surface-variant/30 transition-colors group">
@@ -318,17 +378,17 @@ export const ProductosIntermedios: React.FC = () => {
 
                       <td className="px-2 py-1 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${(item.PRODUCTO_PRIMARIO || item.producto_primario)
-                            ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
-                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
+                          ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
+                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
                           }`}>
-                          {(item.PRODUCTO_PRIMARIO || item.producto_primario) ? 'SÍ' : 'NO'}
+                          {(item.PROD_PRIMARIO || item.producto_primario) ? 'SÍ' : 'NO'}
                         </span>
                       </td>
 
                       <td className="px-2 py-1 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${isActivo
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
                           }`}>
                           {isActivo ? 'HABILITADO' : 'INHABILITADO'}
                         </span>
@@ -354,8 +414,8 @@ export const ProductosIntermedios: React.FC = () => {
                             onClick={() => handleToggleState(item)}
                             title={isActivo ? 'Inhabilitar Producto' : 'Habilitar Producto'}
                             className={`w-7 h-7 rounded-lg border transition-all flex items-center justify-center font-bold cursor-pointer ${isActivo
-                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500 hover:text-white'
-                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500 hover:text-white'
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500 hover:text-white'
+                              : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500 hover:text-white'
                               }`}
                           >
                             <span className="material-symbols-outlined text-[14px]">

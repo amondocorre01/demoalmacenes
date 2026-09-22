@@ -31,6 +31,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import { showAlert } from '../../../config/alerts';
 import {
   useVerificacionInventarioServices,
@@ -273,6 +275,70 @@ export const VerificacionInventario: React.FC = () => {
     }).length;
   }, [itemsList]);
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'PRODUCTO', key: 'producto', width: 28 },
+      { header: 'PRODUCTO FACTURADO', key: 'facturado', width: 25 },
+      { header: 'STOCK SISTEMA', key: 'stock', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD MEDIDA', key: 'unidad', width: 14, align: 'center' as const },
+      { header: 'MEDIDA NOTA', key: 'medidaNota', width: 14, align: 'center' as const },
+      { header: 'CANT. DECLARADA', key: 'cantDeclarada', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD DECL.', key: 'unidadDecl', width: 14, align: 'center' as const },
+      { header: 'OBS. DECLARACIÓN', key: 'obsDecl', width: 22 },
+      { header: 'CANT. VERIFICADA', key: 'cantVerificada', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'DIFERENCIA', key: 'diferencia', width: 14, align: 'right' as const, format: 'number' as const },
+      { header: 'OBS. VERIFICACIÓN', key: 'obsVerif', width: 22 },
+    ];
+
+    const rows = filteredItems.map((item, idx) => {
+      const stockVal = Number(item.STOCK || 0);
+      const verifVal = item.cantidad_verificada === '' ? 0 : Number(item.cantidad_verificada || 0);
+      const diff = Math.round((verifVal - stockVal) * 100) / 100;
+      return {
+        index: idx + 1,
+        producto: item.PRODUCTO || '-',
+        facturado: item.PRODUCTO_FACTURADO || item.FACTURADO || item.NOMBRE_FACTURADO || '-',
+        stock: stockVal,
+        unidad: item.UNIDAD_MEDIDA || item.UNIDAD_MEDIDA_E || '-',
+        medidaNota: item.MEDIDA_NOTA || item.UNIDAD_MEDIDA_A || '-',
+        cantDeclarada: Number(item.CANTIDAD_DECLARADA || 0),
+        unidadDecl: item.UNIDAD_MEDIDA_DECLARADA || item.UNIDAD_MEDIDA || '-',
+        obsDecl: item.OBSERVACION || '-',
+        cantVerificada: verifVal,
+        diferencia: diff,
+        obsVerif: item.observacion_verificacion || '-',
+      };
+    });
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Verificacion_Inventario_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Verificacion',
+      title: 'AUDITORÍA Y VERIFICACIÓN DE INVENTARIO',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Fecha: ${selectedDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'AUDITORÍA Y VERIFICACIÓN DE INVENTARIO',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Fecha: ${selectedDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      totalsRow: true,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full space-y-6">
       {/* Componente Centralizado LoadingOverlay */}
@@ -296,6 +362,12 @@ export const VerificacionInventario: React.FC = () => {
 
         {/* Botones de Acción en Cabecera */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredItems.length === 0}
+          />
+
           <Button
             variant="secondary"
             size="md"

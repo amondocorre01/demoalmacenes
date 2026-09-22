@@ -701,10 +701,30 @@ export const ModalNuevoDesperdicioManual: React.FC<ModalNuevoDesperdicioManualPr
                     type="number"
                     min="0"
                     max={availableStock || undefined}
-                    step="any"
+                    step={Boolean(selectedProducto?.PEDIDO_DECIMAL === 1 || selectedProducto?.PEDIDO_DECIMAL === true) ? 'any' : '1'}
                     value={cantidad}
-                    onChange={(e) => setCantidad(e.target.value === '' ? '' : e.target.value)}
-                    placeholder="0.00"
+                    onKeyDown={(e) => {
+                      const isDecimalAllowed = Boolean(selectedProducto?.PEDIDO_DECIMAL === 1 || selectedProducto?.PEDIDO_DECIMAL === true);
+                      if (!isDecimalAllowed && (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E')) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const isDecimalAllowed = Boolean(selectedProducto?.PEDIDO_DECIMAL === 1 || selectedProducto?.PEDIDO_DECIMAL === true);
+                      if (val === '') {
+                        setCantidad('');
+                      } else {
+                        if (!isDecimalAllowed) {
+                          const cleanVal = val.split('.')[0].split(',')[0];
+                          const parsed = parseInt(cleanVal, 10);
+                          setCantidad(isNaN(parsed) ? '' : String(parsed));
+                        } else {
+                          setCantidad(val);
+                        }
+                      }
+                    }}
+                    placeholder={Boolean(selectedProducto?.PEDIDO_DECIMAL === 1 || selectedProducto?.PEDIDO_DECIMAL === true) ? '0.00' : '0'}
                     className="w-full h-10 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 text-xs font-bold text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                   />
                 </div>

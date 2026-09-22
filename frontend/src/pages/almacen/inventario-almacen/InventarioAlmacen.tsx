@@ -41,6 +41,8 @@ import {
 } from './services/useInventarioAlmacen';
 import { ModalConvertirProductos } from './components/ModalConvertirProductos';
 import { ModalDetalleLotes } from './components/ModalDetalleLotes';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf, TableColumnConfig } from '../../../utils/exportTableHelper';
 
 interface StatusOption {
   id: string;
@@ -218,34 +220,55 @@ export const InventarioAlmacen: React.FC = () => {
     return filteredItems.slice(start, start + pageSize);
   }, [filteredItems, page, pageSize]);
 
-  // Exportar a CSV
-  const handleExportCSV = () => {
-    if (filteredItems.length === 0) return;
+  const exportColumns: TableColumnConfig[] = [
+    { header: 'N°', width: 45, align: 'center', type: 'number' },
+    { header: 'Producto / Insumo', width: 220, align: 'left' },
+    { header: 'SKU / Código', width: 110, align: 'center' },
+    { header: 'Categoría', width: 140, align: 'left' },
+    { header: 'Stock Actual', width: 95, align: 'right', type: 'number' },
+    { header: 'Unidad', width: 70, align: 'center' },
+    { header: 'Estado', width: 100, align: 'center' },
+  ];
 
-    const headers = ['N°', 'Producto', 'SKU / Código', 'Categoría', 'Stock', 'Unidad de Medida', 'Estado'];
-    const rows = filteredItems.map((item, idx) => [
+  const getExportData = () => {
+    return filteredItems.map((item, idx) => [
       idx + 1,
-      `"${(item.PRODUCTO || item.NOMBRE || '').replace(/"/g, '""')}"`,
-      `"${item.SKU || item.CODIGO || '-'}"`,
-      `"${item.CATEGORIA || item.SUB_CATEGORIA || '-'}"`,
-      Number(item.STOCK || 0).toFixed(2),
-      `"${item.UNIDAD_MEDIDA || item.UNIDAD_MEDIDA_A || '-'}"`,
-      `"${getItemStatus(item.STOCK)}"`,
+      item.PRODUCTO || item.NOMBRE || '-',
+      item.SKU || item.CODIGO || '-',
+      item.CATEGORIA || item.SUB_CATEGORIA || '-',
+      Number(item.STOCK || 0),
+      item.UNIDAD_MEDIDA || item.UNIDAD_MEDIDA_A || 'UND',
+      getItemStatus(item.STOCK),
     ]);
+  };
 
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute(
-      'download',
-      `inventario_${selectedAlmacen?.DESCRICION?.toLowerCase().replace(/\s+/g, '_') || 'almacen'}_${new Date().toISOString().split('T')[0]}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportExcel = () => {
+    const data = getExportData();
+    const alm = selectedAlmacen?.DESCRICION || 'ALMACÉN';
+    const totalStock = filteredItems.reduce((acc, curr) => acc + Number(curr.STOCK || 0), 0);
+
+    exportTableToExcel({
+      title: 'INVENTARIO DE ALMACÉN',
+      subtitle: `ALMACÉN: ${alm}   |   CATEGORÍA: ${selectedCategoryOption}   |   ESTADO: ${selectedStatusOption.label}`,
+      filename: `inventario_${alm.toLowerCase().replace(/\s+/g, '_')}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      columns: exportColumns,
+      data,
+      totals: ['', '', '', 'TOTAL STOCK', totalStock, '', ''],
+    });
+  };
+
+  const handleExportPdf = () => {
+    const data = getExportData();
+    const alm = selectedAlmacen?.DESCRICION || 'ALMACÉN';
+    const totalStock = filteredItems.reduce((acc, curr) => acc + Number(curr.STOCK || 0), 0);
+
+    exportTableToPdf({
+      title: 'INVENTARIO DE ALMACÉN',
+      subtitle: `ALMACÉN: ${alm}   |   CATEGORÍA: ${selectedCategoryOption}   |   ESTADO: ${selectedStatusOption.label}`,
+      columns: exportColumns,
+      data,
+      totals: ['', '', '', 'TOTAL STOCK', totalStock, '', ''],
+    });
   };
 
   const handleOpenDetailModal = (item: InventarioItem) => {
@@ -269,16 +292,11 @@ export const InventarioAlmacen: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            icon="download"
-            onClick={handleExportCSV}
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
             disabled={filteredItems.length === 0}
-            className="!h-9"
-          >
-            Exportar CSV
-          </Button>
+          />
 
           <Button
             variant="primary"

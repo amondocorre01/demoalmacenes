@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 
 const ListaPreciosInsumos: React.FC = () => {
   const [filterDate, setFilterDate] = useState<Dayjs | null>(dayjs('2026-03-25'));
@@ -12,6 +14,63 @@ const ListaPreciosInsumos: React.FC = () => {
     { product: 'Mantequilla Sin Sal', recipeQty: '125.0000', recipeUnit: 'Gramo', price: '8.402337', purchasePresentation: 'Unidad', stdQty: '1.00', stdUnit: 'Bloque 500g', adjQty: '500.00', adjUnit: 'Gramo', unitCost: '12.450', invoiceDate: '18-03-2026', icon: 'inventory' },
   ];
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'PRODUCTO', key: 'product', width: 28 },
+      { header: 'CANTIDAD RECETA', key: 'recipeQty', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD RECETA', key: 'recipeUnit', width: 14, align: 'center' as const },
+      { header: 'PRECIO', key: 'price', width: 14, align: 'right' as const, format: 'currency' as const },
+      { header: 'PRESENTACIÓN', key: 'purchasePresentation', width: 16 },
+      { header: 'CANT. ESTÁNDAR', key: 'stdQty', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD ESTÁNDAR', key: 'stdUnit', width: 16 },
+      { header: 'CANT. ADECUACIÓN', key: 'adjQty', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'UNIDAD ADECUACIÓN', key: 'adjUnit', width: 16 },
+      { header: 'COSTO UNITARIO', key: 'unitCost', width: 16, align: 'right' as const, format: 'currency' as const },
+      { header: 'FECHA FACTURA', key: 'invoiceDate', width: 14, align: 'center' as const },
+    ];
+
+    const rows = data.map((item, idx) => ({
+      index: idx + 1,
+      product: item.product,
+      recipeQty: Number(item.recipeQty),
+      recipeUnit: item.recipeUnit,
+      price: Number(item.price),
+      purchasePresentation: item.purchasePresentation,
+      stdQty: Number(item.stdQty),
+      stdUnit: item.stdUnit,
+      adjQty: Number(item.adjQty),
+      adjUnit: item.adjUnit,
+      unitCost: Number(item.unitCost),
+      invoiceDate: item.invoiceDate,
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Lista_Precios_Insumos_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'PreciosInsumos',
+      title: 'LISTA DE PRECIOS Y COSTOS DE INSUMOS',
+      subtitle: `Fecha: ${filterDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'LISTA DE PRECIOS Y COSTOS DE INSUMOS',
+      subtitle: `Fecha: ${filterDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full">
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
@@ -19,11 +78,12 @@ const ListaPreciosInsumos: React.FC = () => {
           <p className="text-3xl font-extrabold text-zinc-900 tracking-tight uppercase">Lista precios productos insumos</p>
           <p className="text-zinc-500 mt-1">Gestión técnica y control de costos de materia prima.</p>
         </div>
-        <div className="flex gap-3">
-          <button className="px-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-semibold text-zinc-700 hover:bg-zinc-50 flex items-center gap-2 shadow-sm transition-all">
-            <span className="material-symbols-outlined text-lg">download</span>
-            Exportar Excel
-          </button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={data.length === 0}
+          />
         </div>
       </div>
 

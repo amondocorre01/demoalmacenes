@@ -38,6 +38,8 @@ import { ModalAsignarResponsable } from './components/ModalAsignarResponsable';
 import { ModalSeleccionarAlmacenes } from './components/ModalSeleccionarAlmacenes';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
 import { showAlert } from '../../../config/alerts';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf, TableColumnConfig } from '../../../utils/exportTableHelper';
 
 interface PermissionCheck {
   allowed: boolean;
@@ -380,12 +382,81 @@ export const ReposicionProductosVencidos: React.FC = () => {
     }
   };
 
+  const exportColumns: TableColumnConfig[] = [
+    { header: 'N°', width: 45, align: 'center', type: 'number' },
+    { header: 'Almacén', width: 140, align: 'left' },
+    { header: 'Tipo', width: 130, align: 'center' },
+    { header: 'Fecha Registro', width: 95, align: 'center' },
+    { header: 'Fecha Vencimiento', width: 95, align: 'center' },
+    { header: 'Producto', width: 220, align: 'left' },
+    { header: 'Cantidad', width: 75, align: 'center', type: 'number' },
+    { header: 'P. Consumo Int.', width: 100, align: 'right', type: 'currency' },
+    { header: 'Total Asumido (Bs.)', width: 115, align: 'right', type: 'currency' },
+    { header: 'Usuario Responsable', width: 180, align: 'left' },
+  ];
+
+  const getExportData = () => {
+    return filteredItems.map((item: any, idx) => {
+      const alm = item.ALMACEN || item.DESCRICION || '-';
+      const tipo = item.ESTADO_DESC || item.TIPO || (item.ID_ESTADO === 1 ? 'POR VENCIMIENTO' : item.ID_ESTADO === 2 ? 'POR DESCUADRE' : 'VENCIDO');
+      const fReg = formatDateDisplay(item.FECHA_REGISTRO);
+      const fVenc = formatDateDisplay(item.FECHA_VENCIMIENTO);
+      const prod = item.PRODUCTO || item.NOMBRE_PRODUCTO || item.NOMBRE_DETALLE || '-';
+      const cant = Number(item.CANTIDAD || 0);
+      const pUnit = Number(item.PRECIO_CONSUMO_INTERNO ?? item.PRECIO ?? 0);
+      const tot = Number(item.TOTAL_ASUMIDO ?? item.TOTAL ?? cant * pUnit);
+      const user = item.USUARIO_ASUMIDO || item.USUARIO || 'Sin Asignar';
+
+      return [
+        idx + 1,
+        alm,
+        tipo,
+        fReg,
+        fVenc,
+        prod,
+        cant,
+        pUnit,
+        tot,
+        user,
+      ];
+    });
+  };
+
+  const handleExportExcel = () => {
+    const data = getExportData();
+    const fi = startDate ? startDate.format('DD/MM/YYYY') : '';
+    const ff = endDate ? endDate.format('DD/MM/YYYY') : '';
+
+    exportTableToExcel({
+      title: 'REPOSICIÓN DE PRODUCTOS VENCIDOS',
+      subtitle: `RANGO: ${fi} AL ${ff}   |   ESTADO: ${selectedEstado?.nombre || 'TODOS'}`,
+      filename: `reposicion_vencidos_${dayjs().format('YYYYMMDD_HHmm')}`,
+      columns: exportColumns,
+      data,
+      totals: ['', '', '', '', '', 'TOTAL GENERAL', '', '', totalAssumedCost, ''],
+    });
+  };
+
+  const handleExportPdf = () => {
+    const data = getExportData();
+    const fi = startDate ? startDate.format('DD/MM/YYYY') : '';
+    const ff = endDate ? endDate.format('DD/MM/YYYY') : '';
+
+    exportTableToPdf({
+      title: 'REPOSICIÓN DE PRODUCTOS VENCIDOS',
+      subtitle: `RANGO: ${fi} AL ${ff}   |   ESTADO: ${selectedEstado?.nombre || 'TODOS'}`,
+      columns: exportColumns,
+      data,
+      totals: ['', '', '', '', '', 'TOTAL GENERAL', '', '', totalAssumedCost, ''],
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full space-y-2 p-2 sm:p-0 animate-in fade-in duration-300">
       <LoadingOverlay show={isLoading} message="Cargando reposición de productos..." />
 
       {/* ── Encabezado Principal ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-2xl font-black text-on-surface uppercase tracking-tight font-headline">
             REPOSICIÓN DE PRODUCTOS VENCIDOS
@@ -395,13 +466,12 @@ export const ReposicionProductosVencidos: React.FC = () => {
           </p>
         </div>
 
-        {/* Badge Informativo de Rol / Restricción */}
-        {/* <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface dark:bg-zinc-850 border border-outline-variant dark:border-zinc-800 shadow-sm self-start sm:self-auto">
-          <span className="material-symbols-outlined text-primary text-base">info</span>
-          <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-350 uppercase tracking-wide">
-            Modificación: Mes en curso (o primeros 5 días para mes anterior)
-          </span>
-        </div> */}
+        {/* Acciones de Exportación Excel / PDF */}
+        <ExportTableButtons
+          onExportExcel={handleExportExcel}
+          onExportPdf={handleExportPdf}
+          disabled={filteredItems.length === 0}
+        />
       </div>
 
       {/* ── Barra Superior de Filtros ── */}

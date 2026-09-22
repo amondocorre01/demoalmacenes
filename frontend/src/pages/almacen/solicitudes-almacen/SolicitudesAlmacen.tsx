@@ -37,6 +37,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import {
   useSolicitudesAlmacenServices,
   SolicitudAlmacenItem,
@@ -206,6 +208,58 @@ export const SolicitudesAlmacen: React.FC = () => {
     setIsNewModalOpen(true);
   };
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'ALMACÉN', key: 'almacen', width: 22 },
+      { header: 'FECHA REGISTRO', key: 'fechaReg', width: 16 },
+      { header: 'HORA', key: 'horaReg', width: 12 },
+      { header: 'USUARIO', key: 'usuario', width: 22 },
+      { header: 'FECHA A ENTREGAR', key: 'fechaEntrega', width: 16 },
+      { header: 'ÁREA', key: 'area', width: 20 },
+      { header: 'ESTADO', key: 'estado', width: 14, align: 'center' as const },
+    ];
+
+    const rows = filteredRequests.map((req, idx) => {
+      const isDelivered = req.ESTADO === 1 || req.ESTADO === '1' || req.ESTADO === 'ENTREGADO';
+      return {
+        index: idx + 1,
+        almacen: req.ALMACEN || `Almacén #${req.ID_PLANTA_ALMACEN || '-'}`,
+        fechaReg: formatDateDisplay(req.FECHA_REGISTRO),
+        horaReg: req.HORA_REGISTRO ? formatTimeDisplay(req.HORA_REGISTRO) : '-',
+        usuario: req.NOMBRE_USUARIO || '-',
+        fechaEntrega: formatDateDisplay(req.FECHA_A_ENTREGAR),
+        area: req.AREA || '-',
+        estado: isDelivered ? 'ENTREGADO' : 'SOLICITADO',
+      };
+    });
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Solicitudes_Almacen_${selectedWarehouse?.DESCRICION || 'Todos'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Solicitudes',
+      title: 'SOLICITUDES DE PEDIDOS A ALMACÉN',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'SOLICITUDES DE PEDIDOS A ALMACÉN',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
       <LoadingOverlay show={isLoading} message="Cargando solicitudes..." />
@@ -221,15 +275,22 @@ export const SolicitudesAlmacen: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          icon="add_circle"
-          onClick={handleOpenNew}
-          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
-        >
-          Nueva Solicitud
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredRequests.length === 0}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            icon="add_circle"
+            onClick={handleOpenNew}
+            className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+          >
+            Nueva Solicitud
+          </Button>
+        </div>
       </div>
 
       {/* ── Selector de Almacén y Fechas Estandarizado (AGENTS.md) ── */}

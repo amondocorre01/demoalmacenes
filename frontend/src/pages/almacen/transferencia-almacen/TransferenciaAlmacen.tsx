@@ -35,6 +35,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import {
   useTransferenciaAlmacenServices,
   TransferenciaItem,
@@ -265,6 +267,62 @@ export const TransferenciaAlmacen: React.FC = () => {
     setIsDetailModalOpen(true);
   };
 
+  const getOperacionText = (envio?: number | string) => {
+    const envioNum = Number(envio);
+    if (envioNum === 0) return 'Recibido';
+    if (envioNum === 1) return 'Enviado';
+    if (envioNum === 2) return 'En Camino';
+    if (envioNum === 3) return 'Rechazado';
+    return '-';
+  };
+
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'FECHA REGISTRO', key: 'fecha', width: 16 },
+      { header: 'HORA', key: 'hora', width: 12 },
+      { header: 'ALMACÉN DESTINO', key: 'destino', width: 25 },
+      { header: 'USUARIO', key: 'usuario', width: 25 },
+      { header: 'OPERACIÓN', key: 'operacion', width: 16, align: 'center' as const },
+      { header: 'ESTADO', key: 'estado', width: 16, align: 'center' as const },
+    ];
+
+    const rows = filteredTransfers.map((item, idx) => ({
+      index: idx + 1,
+      fecha: formatDateDisplay(item.FECHA_REGISTRO),
+      hora: formatTimeDisplay(item.FECHA_REGISTRO, item.HORA_REGISTRO) || '-',
+      destino: item.DESTINO || item.ALMACEN_DESTINO || '-',
+      usuario: item.USUARIO || item.NOMBRE_USUARIO || '-',
+      operacion: getOperacionText(item.ENVIO),
+      estado: item.ESTADO === 1 || item.ESTADO === '1' ? 'Aceptado' : item.ESTADO === 2 || item.ESTADO === '2' ? 'Rechazado' : String(item.ESTADO || '-'),
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Transferencias_PI_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Transferencias',
+      title: 'HISTORIAL DE TRANSFERENCIAS DE PRODUCTOS INTERMEDIOS',
+      subtitle: `Almacén Origen: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'HISTORIAL DE TRANSFERENCIAS DE PRODUCTOS INTERMEDIOS',
+      subtitle: `Almacén Origen: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0">
       <LoadingOverlay show={isLoading} message="Cargando transferencias de productos intermedios..." />
@@ -280,15 +338,22 @@ export const TransferenciaAlmacen: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          icon="sync_alt"
-          onClick={() => setIsNewModalOpen(true)}
-          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
-        >
-          Registrar Transferencia
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredTransfers.length === 0}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            icon="sync_alt"
+            onClick={() => setIsNewModalOpen(true)}
+            className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+          >
+            Registrar Transferencia
+          </Button>
+        </div>
       </div>
 
       {/* ── Selector de Almacén y Fechas Estandarizado (AGENTS.md) ── */}

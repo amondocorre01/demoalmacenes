@@ -20,6 +20,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
+import dayjs from 'dayjs';
 import {
   ModalAsignacionAlmacenUsuario,
   getAlmacenId,
@@ -156,6 +159,54 @@ const AccesibilidadAlmacenUsuarios: React.FC = () => {
     );
   };
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'USUARIO', key: 'usuario', width: 30 },
+      { header: 'TOTAL ACCESOS', key: 'totalAccesos', width: 16, align: 'center' as const, format: 'number' as const },
+      { header: 'ALMACENES ASIGNADOS', key: 'almacenes', width: 45 },
+    ];
+
+    const rows = filteredUsuarios.map((u, idx) => {
+      const activeAlmacenes = Array.isArray(u.ALMACENES)
+        ? u.ALMACENES.filter((a) => a.ESTADO !== 0)
+        : [];
+      const nombresAlmacenes = activeAlmacenes.map((a) => getAlmacenNombre(a)).join(', ');
+
+      return {
+        index: idx + 1,
+        usuario: u.NOMBRE_COMPLETO || '-',
+        totalAccesos: activeAlmacenes.length,
+        almacenes: nombresAlmacenes || 'Sin almacenes asignados',
+      };
+    });
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Accesibilidad_Almacenes_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Accesibilidad',
+      title: 'PERMISOS Y ACCESIBILIDAD DE ALMACENES POR USUARIO',
+      subtitle: `Total usuarios: ${filteredUsuarios.length}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'PERMISOS Y ACCESIBILIDAD DE ALMACENES POR USUARIO',
+      subtitle: `Total usuarios: ${filteredUsuarios.length}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 px-2 sm:px-1">
       <LoadingOverlay show={loading} message="Cargando Accesibilidad de Almacenes..." />
@@ -169,6 +220,14 @@ const AccesibilidadAlmacenUsuarios: React.FC = () => {
           <p className="text-[10px] text-zinc-400 dark:text-zinc-400 font-medium text-xs -mt-0.5 sm:-mt-1 max-w-2xl">
             Asigna y gestiona los permisos de acceso a los distintos almacenes operativos para los usuarios del sistema.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredUsuarios.length === 0}
+          />
         </div>
       </div>
 

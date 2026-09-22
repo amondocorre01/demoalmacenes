@@ -1,5 +1,7 @@
 import React from 'react';
-
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
+import dayjs from 'dayjs';
 
 const PreRegistroProductos: React.FC = () => {
   const products = [
@@ -15,6 +17,53 @@ const PreRegistroProductos: React.FC = () => {
     { warehouse: 'SUPERVISIÓN', product: 'Galleta de Chips de chocolate', stock: 47, order: '46', produced: 0, status: 'PENDIENTE', statusColor: 'bg-yellow-100 text-yellow-700' },
   ];
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'ALMACÉN', key: 'warehouse', width: 22 },
+      { header: 'PRODUCTO', key: 'product', width: 30 },
+      { header: 'STOCK PLANTA', key: 'stock', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'CANTIDAD PEDIDO', key: 'order', width: 16, align: 'right' as const, format: 'number' as const },
+      { header: 'CANTIDAD PRODUCIDA', key: 'produced', width: 18, align: 'right' as const, format: 'number' as const },
+      { header: 'ESTADO', key: 'status', width: 16, align: 'center' as const },
+    ];
+
+    const rows = products.map((p, idx) => ({
+      index: idx + 1,
+      warehouse: p.warehouse,
+      product: p.product,
+      stock: p.stock,
+      order: Number(p.order),
+      produced: p.produced,
+      status: p.status,
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Pre_Registro_Productos_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'PreRegistro',
+      title: 'PRE-REGISTRO DE PRODUCTOS E INSUMOS',
+      subtitle: `Total solicitados: ${products.length}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'PRE-REGISTRO DE PRODUCTOS E INSUMOS',
+      subtitle: `Total solicitados: ${products.length}`,
+      columns,
+      rows,
+      orientation: 'landscape',
+    });
+  };
+
   return (
     <div className="max-w-7xl mx-auto w-full">
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -22,15 +71,22 @@ const PreRegistroProductos: React.FC = () => {
           <p className="text-3xl font-black text-zinc-900 tracking-tight mb-2 uppercase">Pre - Registro- Productos-Insumos</p>
           <p className="text-neutral-500 max-w-2xl">Módulo de gestión de requerimientos y control de producción para insumos de planta industrial.</p>
         </div>
-        <div className="w-full md:w-72">
-          <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1 ml-1">Almacén</label>
-          <div className="relative group">
-            <select className="w-full h-12 pl-4 pr-10 bg-white border border-neutral-200 rounded shadow-sm appearance-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all cursor-pointer font-medium text-zinc-900">
-              <option>SUPERVISIÓN</option>
-              <option>PLANTA PROCESAMIENTO</option>
-              <option>DESPACHO CENTRAL</option>
-            </select>
-            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 group-hover:text-primary transition-colors">unfold_more</span>
+        <div className="flex items-center gap-3">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={products.length === 0}
+          />
+          <div className="w-full md:w-72">
+            <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1 ml-1">Almacén</label>
+            <div className="relative group">
+              <select className="w-full h-12 pl-4 pr-10 bg-white border border-neutral-200 rounded shadow-sm appearance-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all cursor-pointer font-medium text-zinc-900">
+                <option>SUPERVISIÓN</option>
+                <option>PLANTA PROCESAMIENTO</option>
+                <option>DESPACHO CENTRAL</option>
+              </select>
+              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 group-hover:text-primary transition-colors">unfold_more</span>
+            </div>
           </div>
         </div>
       </div>

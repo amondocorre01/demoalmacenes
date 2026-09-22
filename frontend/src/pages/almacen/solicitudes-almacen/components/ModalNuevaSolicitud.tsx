@@ -181,10 +181,38 @@ export const ModalNuevaSolicitud: React.FC<ModalNuevaSolicitudProps> = ({
     }
   };
 
-  const handleQtyChange = (id: number, value: string, maxStock: number) => {
+  const handleQtyChange = (id: number, value: string, maxStock: number, isDecimalAllowed: boolean = true) => {
     if (value === '') {
       setProducts((prev) =>
         prev.map((p) => (p.ID_PRODUCTO_DETALLE === id ? { ...p, requestedQty: '' } : p))
+      );
+      return;
+    }
+
+    if (!isDecimalAllowed) {
+      const cleanVal = value.split('.')[0].split(',')[0];
+      const numInt = parseInt(cleanVal, 10);
+      if (isNaN(numInt)) return;
+      if (numInt < 0) {
+        setProducts((prev) =>
+          prev.map((p) => (p.ID_PRODUCTO_DETALLE === id ? { ...p, requestedQty: '0' } : p))
+        );
+        return;
+      }
+      if (numInt > maxStock) {
+        showAlert.warning(
+          'Stock insuficiente',
+          `No puede solicitar una cantidad mayor al stock disponible (${maxStock}).`
+        );
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.ID_PRODUCTO_DETALLE === id ? { ...p, requestedQty: Math.floor(maxStock).toString() } : p
+          )
+        );
+        return;
+      }
+      setProducts((prev) =>
+        prev.map((p) => (p.ID_PRODUCTO_DETALLE === id ? { ...p, requestedQty: numInt.toString() } : p))
       );
       return;
     }
@@ -689,15 +717,22 @@ export const ModalNuevaSolicitud: React.FC<ModalNuevaSolicitudProps> = ({
                                 type="number"
                                 min={0}
                                 max={stockVal}
-                                step={p.PEDIDO_DECIMAL ? '0.01' : '1'}
+                                step={Boolean(p.PEDIDO_DECIMAL === 1 || p.PEDIDO_DECIMAL === true) ? 'any' : '1'}
                                 disabled={!hasStock}
                                 value={p.requestedQty}
-                                placeholder="0.00"
+                                placeholder={Boolean(p.PEDIDO_DECIMAL === 1 || p.PEDIDO_DECIMAL === true) ? '0.00' : '0'}
+                                onKeyDown={(e) => {
+                                  const isDecimalAllowed = Boolean(p.PEDIDO_DECIMAL === 1 || p.PEDIDO_DECIMAL === true);
+                                  if (!isDecimalAllowed && (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E')) {
+                                    e.preventDefault();
+                                  }
+                                }}
                                 onChange={(e) =>
                                   handleQtyChange(
                                     p.ID_PRODUCTO_DETALLE,
                                     e.target.value,
-                                    stockVal
+                                    stockVal,
+                                    Boolean(p.PEDIDO_DECIMAL === 1 || p.PEDIDO_DECIMAL === true)
                                   )
                                 }
                                 className={`w-16 sm:w-22 h-7 sm:h-8 text-center text-[11px] sm:text-xs font-black rounded-lg border outline-none transition-all ${!hasStock

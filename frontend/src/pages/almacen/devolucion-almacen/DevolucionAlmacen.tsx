@@ -35,6 +35,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs, { Dayjs } from 'dayjs';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf } from '../../../utils/exportTableHelper';
 import {
   useDevolucionAlmacenesServices,
   DevolucionItem,
@@ -197,6 +199,49 @@ export const DevolucionAlmacen: React.FC = () => {
     setIsDetailModalOpen(true);
   };
 
+  const getExportData = () => {
+    const columns = [
+      { header: 'N°', key: 'index', width: 6, align: 'center' as const },
+      { header: 'FECHA REGISTRO', key: 'fecha', width: 16 },
+      { header: 'HORA', key: 'hora', width: 12 },
+      { header: 'ÁREA', key: 'area', width: 25 },
+      { header: 'USUARIO', key: 'usuario', width: 25 },
+    ];
+
+    const rows = filteredDevoluciones.map((item, idx) => ({
+      index: idx + 1,
+      fecha: formatDateDisplay(item.FECHA_REGISTRO),
+      hora: formatTimeDisplay(item.FECHA_REGISTRO, item.HORA_REGISTRO) || '-',
+      area: item.AREA || item.NOMBRE_AREA || '-',
+      usuario: item.USUARIO || item.NOMBRE_USUARIO || '-',
+    }));
+
+    return { columns, rows };
+  };
+
+  const handleExportExcel = () => {
+    const { columns, rows } = getExportData();
+    exportTableToExcel({
+      filename: `Devoluciones_${selectedWarehouse?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      sheetName: 'Devoluciones',
+      title: 'HISTORIAL DE DEVOLUCIONES DE ALMACÉN',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const { columns, rows } = getExportData();
+    exportTableToPdf({
+      title: 'HISTORIAL DE DEVOLUCIONES DE ALMACÉN',
+      subtitle: `Almacén: ${selectedWarehouse?.DESCRICION || 'Todos'} | Rango: ${startDate?.format('DD/MM/YYYY') || ''} al ${endDate?.format('DD/MM/YYYY') || ''}`,
+      columns,
+      rows,
+      orientation: 'portrait',
+    });
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto w-full animate-in fade-in duration-500 pb-0 ">
       <LoadingOverlay show={isLoading} message="Cargando registros de devolución de almacén..." />
@@ -212,15 +257,22 @@ export const DevolucionAlmacen: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          icon="add_circle"
-          onClick={() => setIsNewModalOpen(true)}
-          className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
-        >
-          Registrar Devolución
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportTableButtons
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            disabled={filteredDevoluciones.length === 0}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            icon="add_circle"
+            onClick={() => setIsNewModalOpen(true)}
+            className="!py-1.5 !px-4 shadow-lg shadow-primary/20"
+          >
+            Registrar Devolución
+          </Button>
+        </div>
       </div>
 
       {/* ── Selector de Almacén y Fechas Estandarizado (AGENTS.md) ── */}

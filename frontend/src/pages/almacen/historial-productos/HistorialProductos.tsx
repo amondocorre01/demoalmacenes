@@ -43,6 +43,8 @@ import {
   HistorialInventarioItem,
 } from './services/useHistorialProductos';
 import { ModalDetalleHistorial } from './components/ModalDetalleHistorial';
+import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
+import { exportTableToExcel, exportTableToPdf, TableColumnConfig } from '../../../utils/exportTableHelper';
 
 const formatDateDisplay = (dateString?: string): string => {
   if (!dateString) return '-';
@@ -68,6 +70,24 @@ const formatDateOnly = (dateString?: string): string => {
   } catch {
     return dateString;
   }
+};
+
+// Utilidades para cálculo y formato de unidades de medida y adecuación
+const getMedidaStd = (CANTIDAD: any, MEDIDA: any) => {
+  if (!MEDIDA) return '';
+  if (Number(CANTIDAD) > 1) {
+    const lastChar = MEDIDA.slice(-1);
+    const vowels = 'aeiouAEIOUáéíóúÁÉÍÓÚ';
+    return vowels.indexOf(lastChar) !== -1 ? `${MEDIDA}s` : `${MEDIDA}es`;
+  }
+  return MEDIDA;
+};
+
+const getMedidaAdec = (CANTIDAD: any, MEDIDA: any, MEDIDA_A: any) => {
+  if (MEDIDA && MEDIDA_A && MEDIDA !== MEDIDA_A && Number(CANTIDAD) > 0) {
+    return ` Cada ${MEDIDA} de ${CANTIDAD} ${getMedidaStd(CANTIDAD, MEDIDA_A)}`;
+  }
+  return '';
 };
 
 export const HistorialProductos: React.FC = () => {
@@ -220,10 +240,11 @@ export const HistorialProductos: React.FC = () => {
     const query = searchQuery.toLowerCase().trim();
 
     return historialList.filter((item) => {
-      const prod = (item.PRODUCTO || item.NOMBRE || '').toLowerCase();
+      const prod = (item.PRODUCTO || item.PRODUCTO_DETALLE || item.NOMBRE || '').toLowerCase();
       const lote = (item.LOTE || '').toLowerCase();
-      const user = (item.USUARIO || item.USUARIO_REGISTRO || item.NOMBRE_USUARIO || '').toLowerCase();
+      const user = (item.USUARIO || item.USUARIO_REGISTRO || item.USUARIO_REGISTRA || item.NOMBRE_USUARIO || '').toLowerCase();
       const tipo = (item.TIPO_MOVIMIENTO || item.MOTIVO || '').toLowerCase();
+      const desc = (item.DESCRICION || '').toLowerCase();
       const cant = String(item.CANTIDAD || item.CANTIDAD_INGRESO || item.CANTIDAD_SALIDA || '');
       const fecha = (item.FECHA_REGISTRO || '').toLowerCase();
 
@@ -232,6 +253,7 @@ export const HistorialProductos: React.FC = () => {
         lote.includes(query) ||
         user.includes(query) ||
         tipo.includes(query) ||
+        desc.includes(query) ||
         cant.includes(query) ||
         fecha.includes(query)
       );
@@ -262,7 +284,7 @@ export const HistorialProductos: React.FC = () => {
         totalSalidas += cant;
       }
 
-      const prodName = item.PRODUCTO || item.NOMBRE;
+      const prodName = item.PRODUCTO || item.PRODUCTO_DETALLE || item.NOMBRE;
       if (prodName) {
         productosSet.add(prodName);
       }
@@ -276,60 +298,83 @@ export const HistorialProductos: React.FC = () => {
     };
   }, [historialList]);
 
-  // Exportar a CSV
-  const handleExportCSV = () => {
-    if (filteredData.length === 0) {
-      showAlert.error('Sin Datos', 'No hay registros en el historial para exportar.');
-      return;
-    }
+  const exportColumns: TableColumnConfig[] = [
+    { header: 'N°', width: 45, align: 'center', type: 'number' },
+    { header: 'Almacén', width: 140, align: 'left' },
+    { header: 'Producto / Insumo', width: 220, align: 'left' },
+    { header: 'Tipo Movimiento', width: 120, align: 'center' },
+    { header: 'Cant. Ingreso', width: 90, align: 'right', type: 'number' },
+    { header: 'Cant. Utilizada', width: 90, align: 'right', type: 'number' },
+    { header: 'Cant. Disponible', width: 95, align: 'right', type: 'number' },
+    { header: 'U. Medida', width: 70, align: 'center' },
+    { header: 'Adecuación', width: 100, align: 'center' },
+    { header: 'Lote', width: 90, align: 'center' },
+    { header: 'Fecha Registro', width: 110, align: 'center' },
+    { header: 'Fecha Vencimiento', width: 110, align: 'center' },
+    { header: 'Usuario Responsable', width: 160, align: 'left' },
+    { header: 'Descripción / Motivo', width: 200, align: 'left' },
+  ];
 
-    const headers = [
-      'N°',
-      'Almacén',
-      'Producto',
-      'Tipo Movimiento',
-      'Estado Ingreso',
-      'Cantidad',
-      'Cant. Utilizada',
-      'Unidad Medida',
-      'Lote',
-      'Fecha Registro',
-      'Fecha Vencimiento',
-      'Responsable',
-    ];
-
-    const rows = filteredData.map((item, idx) => {
+  const getExportData = () => {
+    return filteredData.map((item, idx) => {
       const isIngreso = Number(item.ESTADO_INGRESO) === 1;
-      const cant = Number(item.CANTIDAD || item.CANTIDAD_INGRESO || item.CANTIDAD_SALIDA || 0);
+      const cantIngreso = Number(item.CANTIDAD_INGRESO || (isIngreso ? item.CANTIDAD : 0) || 0);
+      const cantUtilizada = Number(item.CANTIDAD_UTILIZADA || 0);
+      const cantDisponible = item.CANTIDAD_DISPONIBLE !== undefined
+        ? Number(item.CANTIDAD_DISPONIBLE)
+        : Math.max(0, cantIngreso - cantUtilizada);
+
+      const unidadMedida = item.UNIDAD_MEDIDA_E || item.UNIDAD_MEDIDA || '';
+      const unidadMedidaAdec = item.UNIDAD_MEDIDA_A || '';
+      const cantAdec = item.CANTIDAD_ADECUACION || '';
+      const infoAdec = cantAdec ? `${cantAdec} ${unidadMedidaAdec}`.trim() : (item.PRESENTACION || '-');
+
       return [
         idx + 1,
-        `"${item.ALMACEN || selectedAlmacen?.DESCRICION || ''}"`,
-        `"${item.PRODUCTO || item.NOMBRE || ''}"`,
-        `"${item.TIPO_MOVIMIENTO || item.MOTIVO || (isIngreso ? 'Entrada' : 'Salida')}"`,
-        `"${isIngreso ? 'Ingreso' : 'Salida'}"`,
-        cant,
-        Number(item.CANTIDAD_UTILIZADA || 0),
-        `"${item.UNIDAD_MEDIDA || ''}"`,
-        `"${item.LOTE || ''}"`,
-        `"${formatDateDisplay(item.FECHA_REGISTRO)}"`,
-        `"${formatDateOnly(item.FECHA_VENCIMIENTO)}"`,
-        `"${item.NOMBRE_USUARIO || item.USUARIO_REGISTRO || item.USUARIO || ''}"`,
-      ].join(';');
+        item.ALMACEN || selectedAlmacen?.DESCRICION || '-',
+        item.PRODUCTO || item.PRODUCTO_DETALLE || item.NOMBRE || '-',
+        item.TIPO_MOVIMIENTO || item.MOTIVO || (isIngreso ? 'Entrada' : 'Salida'),
+        cantIngreso,
+        cantUtilizada,
+        cantDisponible,
+        unidadMedida,
+        infoAdec,
+        item.LOTE || '-',
+        formatDateDisplay(item.FECHA_REGISTRO),
+        formatDateOnly(item.FECHA_VENCIMIENTO),
+        item.NOMBRE_USUARIO || item.USUARIO_REGISTRO || item.USUARIO_REGISTRA || item.USUARIO || '-',
+        item.DESCRICION || '-',
+      ];
     });
+  };
 
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute(
-      'download',
-      `Historial_Inventario_${selectedAlmacen?.DESCRICION || 'Almacen'}_${dayjs().format('YYYYMMDD_HHmm')}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showAlert.success('Exportación Exitosa', 'El archivo CSV ha sido generado correctamente.');
+  const handleExportExcel = () => {
+    const data = getExportData();
+    const alm = selectedAlmacen?.DESCRICION || 'TODOS';
+    const fi = startDate ? startDate.format('DD/MM/YYYY') : '';
+    const ff = endDate ? endDate.format('DD/MM/YYYY') : '';
+
+    exportTableToExcel({
+      title: 'HISTORIAL DE PRODUCTOS EN ALMACÉN',
+      subtitle: `ALMACÉN: ${alm}   |   RANGO: ${fi} AL ${ff}   |   PRODUCTO: ${selectedProduct?.PRODUCTO || 'TODOS'}`,
+      filename: `historial_${alm.toLowerCase().replace(/\s+/g, '_')}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      columns: exportColumns,
+      data,
+    });
+  };
+
+  const handleExportPdf = () => {
+    const data = getExportData();
+    const alm = selectedAlmacen?.DESCRICION || 'TODOS';
+    const fi = startDate ? startDate.format('DD/MM/YYYY') : '';
+    const ff = endDate ? endDate.format('DD/MM/YYYY') : '';
+
+    exportTableToPdf({
+      title: 'HISTORIAL DE PRODUCTOS EN ALMACÉN',
+      subtitle: `ALMACÉN: ${alm}   |   RANGO: ${fi} AL ${ff}   |   PRODUCTO: ${selectedProduct?.PRODUCTO || 'TODOS'}`,
+      columns: exportColumns,
+      data,
+    });
   };
 
   const handleOpenDetail = (item: HistorialInventarioItem) => {
@@ -339,8 +384,8 @@ export const HistorialProductos: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
-      <div className="max-w-[1600px] mx-auto w-full space-y-6 pb-12 transition-colors">
-        <LoadingOverlay isLoading={isLoading} message="Consultando historial de inventario..." />
+      <div className="max-w-[1600px] mx-auto w-full space-y-5 pb-12 transition-colors">
+        <LoadingOverlay show={isLoading} message="Consultando historial de inventario..." />
 
         {/* ── Encabezado Principal ── */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -354,22 +399,17 @@ export const HistorialProductos: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <Button
-              variant="secondary"
-              size="md"
-              icon="download"
-              onClick={handleExportCSV}
+            <ExportTableButtons
+              onExportExcel={handleExportExcel}
+              onExportPdf={handleExportPdf}
               disabled={filteredData.length === 0}
-              className="!h-10 !px-6 shadow-lg shadow-primary/20 shrink-0"
-            >
-              Exportar CSV
-            </Button>
+            />
           </div>
         </div>
 
         {/* ── Barra Superior de Filtros con MUI Autocomplete ── */}
-        <div className="bg-surface dark:bg-zinc-900 p-5 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm">
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-end gap-4">
+        <div className="bg-surface dark:bg-zinc-900 p-4 sm:p-5 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-end gap-3.5 sm:gap-4">
             {/* 1. Selector de Almacén */}
             <div className="w-full lg:w-1/4 space-y-1.5">
               <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
@@ -417,13 +457,13 @@ export const HistorialProductos: React.FC = () => {
             </div>
 
             {/* 2. Selector de Producto / Insumo */}
-            <div className="w-full lg:w-1/4 space-y-1.5">
+            <div className="w-full lg:w-1/3 space-y-1.5">
               <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
                 Producto / Insumo (Opcional)
               </label>
               <Autocomplete
                 options={productosCatalogo}
-                getOptionLabel={(option) => option.PRODUCTO || option.NOMBRE || ''}
+                getOptionLabel={(option) => option.PRODUCTO_DETALLE || option.PRODUCTO || option.NOMBRE || ''}
                 value={selectedProducto}
                 onChange={(_, newValue) => {
                   setSelectedProducto(newValue);
@@ -472,7 +512,7 @@ export const HistorialProductos: React.FC = () => {
             </div>
 
             {/* 3. Fecha Inicio */}
-            <div className="w-full lg:w-1/5 space-y-1.5">
+            <div className="w-full lg:w-1/6 space-y-1.5">
               <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
                 Fecha Inicio
               </label>
@@ -513,7 +553,7 @@ export const HistorialProductos: React.FC = () => {
             </div>
 
             {/* 4. Fecha Fin */}
-            <div className="w-full lg:w-1/5 space-y-1.5">
+            <div className="w-full lg:w-1/6 space-y-1.5">
               <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
                 Fecha Fin
               </label>
@@ -554,7 +594,7 @@ export const HistorialProductos: React.FC = () => {
             </div>
 
             {/* 5. Botón de Búsqueda Estandarizado */}
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end pb-0.5">
               <button
                 type="button"
                 onClick={() => fetchHistorial()}
@@ -568,9 +608,9 @@ export const HistorialProductos: React.FC = () => {
         </div>
 
         {/* ── Tarjetas de Métricas Consolidadas ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-surface dark:bg-zinc-900 p-5 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="bg-surface dark:bg-zinc-900 p-4 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-2xl">format_list_numbered</span>
             </div>
             <div>
@@ -583,13 +623,13 @@ export const HistorialProductos: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-surface dark:bg-zinc-900 p-5 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+          <div className="bg-surface dark:bg-zinc-900 p-4 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-2xl">trending_up</span>
             </div>
             <div>
               <p className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest leading-none mb-1">
-                Total Entradas / Ingresos
+                Total Ingresos
               </p>
               <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight leading-none">
                 +{metrics.totalEntradas.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -597,13 +637,13 @@ export const HistorialProductos: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-surface dark:bg-zinc-900 p-5 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+          <div className="bg-surface dark:bg-zinc-900 p-4 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-2xl">trending_down</span>
             </div>
             <div>
               <p className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest leading-none mb-1">
-                Total Salidas / Egresos
+                Total Utilizado
               </p>
               <h3 className="text-xl font-black text-rose-600 dark:text-rose-400 tracking-tight leading-none">
                 -{metrics.totalSalidas.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -611,13 +651,13 @@ export const HistorialProductos: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-surface dark:bg-zinc-900 p-5 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+          <div className="bg-surface dark:bg-zinc-900 p-4 rounded-2xl border border-outline-variant dark:border-zinc-800 shadow-sm flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-2xl">category</span>
             </div>
             <div>
               <p className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest leading-none mb-1">
-                Variedad de Productos
+                Variedad Productos
               </p>
               <h3 className="text-xl font-black text-on-surface dark:text-zinc-100 tracking-tight leading-none">
                 {metrics.totalProductos.toLocaleString('es-ES')}
@@ -628,14 +668,62 @@ export const HistorialProductos: React.FC = () => {
 
         {/* ── Main Data Canvas (Tabla Unificada y Compacta) ── */}
         <div className="bg-white dark:bg-zinc-900 rounded-[1rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+          {/* Cabecera Superior del Producto Seleccionado */}
+          {selectedProducto ? (
+            <div className="bg-primary/5 dark:bg-primary/10 border-b border-primary/20 p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-primary text-white flex items-center justify-center shadow-md shadow-primary/20 shrink-0">
+                  <span className="material-symbols-outlined text-xl">inventory_2</span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-black text-primary uppercase tracking-widest block font-headline">
+                    Historial del Producto
+                  </span>
+                  <div className="text-xs sm:text-sm font-black text-on-surface dark:text-zinc-100 uppercase tracking-tight">
+                    <strong>{(selectedProducto.PRODUCTO_DETALLE || selectedProducto.NOMBRE || selectedProducto.PRODUCTO) + ' '}</strong>
+                    <span className="text-primary font-bold">
+                      {'en: ' + getMedidaStd(2, selectedProducto.UNIDAD_MEDIDA_E || selectedProducto.UNIDAD_MEDIDA)}
+                    </span>
+                    <span className="text-zinc-600 dark:text-zinc-300 font-semibold ml-1">
+                      {getMedidaAdec(
+                        selectedProducto.CANTIDAD_ADECUACION,
+                        selectedProducto.UNIDAD_MEDIDA_E || selectedProducto.UNIDAD_MEDIDA,
+                        selectedProducto.UNIDAD_MEDIDA_A
+                      ) + '.'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedProducto.STOCK !== undefined && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+                  <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">
+                    Stock Actual:
+                  </span>
+                  <span className="text-xs font-black text-primary">
+                    {Number(selectedProducto.STOCK).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                    {selectedProducto.UNIDAD_MEDIDA_E || selectedProducto.UNIDAD_MEDIDA || 'UND'}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-zinc-50/60 dark:bg-zinc-850/40 border-b border-zinc-100 dark:border-zinc-800 px-4 py-2.5 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-base">receipt_long</span>
+              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                Visualización General de Historial en Almacén ({selectedAlmacen?.DESCRICION || 'Todos los Almacenes'})
+              </span>
+            </div>
+          )}
+
           {/* Cabecera interna con buscador píldora */}
-          <div className="p-4 border-b border-zinc-100 dark:border-zinc-800/80 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-primary/10 dark:bg-primary/20 text-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg">manage_search</span>
+          <div className="p-3.5 sm:p-4 border-b border-zinc-100 dark:border-zinc-800/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary flex items-center justify-center">
+                <span className="material-symbols-outlined text-base">manage_search</span>
               </div>
               <span className="text-xs font-black uppercase text-on-surface dark:text-zinc-100 tracking-wider">
-                Movimientos de Inventario ({filteredData.length})
+                Registros de Movimiento ({filteredData.length})
               </span>
             </div>
 
@@ -647,44 +735,73 @@ export const HistorialProductos: React.FC = () => {
                   setSearchQuery(e.target.value);
                   setPage(1);
                 }}
-                placeholder="BUSCAR MOVIMIENTO..."
-                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2 px-4 pl-9 text-[10px] font-black text-zinc-900 dark:text-zinc-100 transition-all uppercase tracking-widest focus:ring-4 focus:ring-primary/10 outline-none"
+                placeholder="BUSCAR EN TABLA..."
+                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl py-1.5 px-3.5 pl-8 text-[10px] font-black text-zinc-900 dark:text-zinc-100 transition-all uppercase tracking-widest focus:ring-4 focus:ring-primary/10 outline-none"
               />
-              <span className="material-symbols-outlined absolute left-3 top-2.5 text-zinc-400 text-sm">
+              <span className="material-symbols-outlined absolute left-2.5 top-2 text-zinc-400 text-sm">
                 search
               </span>
             </div>
           </div>
 
           <div className="w-full overflow-x-auto scrollbar-thin">
-            <table className="w-full text-left border-collapse min-w-[1000px]">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-zinc-50/50 dark:bg-zinc-850/50 border-b border-zinc-100 dark:border-zinc-800">
-                  <th className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                <tr className="bg-zinc-50/70 dark:bg-zinc-850/60 border-b border-zinc-100 dark:border-zinc-800">
+                  <th className="pl-4 pr-1 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap w-8">
                     N°
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                    Producto / Insumo
+                  {!selectedProducto && (
+                    <th className="px-2.5 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                      Producto
+                    </th>
+                  )}
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
+                    <div className="leading-tight">
+                      <span>CANT.</span>
+                      <span className="block">INGRESO</span>
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center">
-                    Tipo / Estado
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
+                    <div className="leading-tight">
+                      <span>CANT.</span>
+                      <span className="block">UTILIZADA</span>
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right">
-                    Cant. Operada
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
+                    <div className="leading-tight">
+                      <span>CANT.</span>
+                      <span className="block">DISPONIBLE</span>
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right">
-                    Cant. Utilizada
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">
+                    Medida
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center">
-                    Lote
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">
+                    <div className="leading-tight">
+                      <span>CANT. MEDIDA</span>
+                      <span className="block">/ UNIDAD</span>
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                    Fecha Registro
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">
+                    <div className="leading-tight">
+                      <span>FECHA</span>
+                      <span className="block">REGISTRO</span>
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                    Responsable
+                  <th className="px-2 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">
+                    <div className="leading-tight">
+                      <span>FECHA</span>
+                      <span className="block">VENC.</span>
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center">
+                  <th className="px-2.5 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                    Usuario
+                  </th>
+                  <th className="px-2.5 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                    Descripción
+                  </th>
+                  <th className="pr-4 pl-1 py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap w-12">
                     Acciones
                   </th>
                 </tr>
@@ -693,7 +810,7 @@ export const HistorialProductos: React.FC = () => {
               <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/60 text-xs">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-zinc-400 dark:text-zinc-500">
+                    <td colSpan={selectedProducto ? 11 : 12} className="py-12 text-center text-zinc-400 dark:text-zinc-500">
                       <span className="material-symbols-outlined text-4xl block mb-2 opacity-50">
                         inventory_2
                       </span>
@@ -705,13 +822,37 @@ export const HistorialProductos: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((item, idx) => {
+                  paginatedData.map((item: any, idx) => {
                     const globalIdx = (page - 1) * pageSize + idx + 1;
                     const isIngreso = Number(item.ESTADO_INGRESO) === 1;
-                    const cantVal = Math.abs(
-                      Number(item.CANTIDAD || item.CANTIDAD_INGRESO || item.CANTIDAD_SALIDA || 0)
+
+                    // Cantidad Ingreso
+                    const cantIngreso = Number(
+                      item.CANTIDAD || (isIngreso ? item.CANTIDAD : 0) || 0
                     );
-                    const cantUsed = Number(item.CANTIDAD_UTILIZADA || 0);
+
+                    // Cantidad Utilizada
+                    const cantUtilizada = Number(item.CANTIDAD_UTILIZADA || 0);
+
+                    // Cantidad Disponible
+                    const cantDisponible = item.CANTIDAD_DISPONIBLE !== undefined
+                      ? Number(item.CANTIDAD_DISPONIBLE)
+                      : Math.max(0, cantIngreso - cantUtilizada);
+
+                    // Medida principal
+                    const unidadMedida = item.UNIDAD_MEDIDA_E || item.UNIDAD_MEDIDA || '-';
+
+                    // Cantidad Medida / Unidad Medida (adecuación o presentación)
+                    const cantAdec = item.CANTIDAD_ADECUACION;
+                    const unidadAdec = item.UNIDAD_MEDIDA_A;
+
+                    // Fechas
+                    const fechaReg = item.FECHA_REGISTRO;
+                    const fechaVenc = item.FECHA_VENCIMIENTO;
+
+                    // Usuario y Descripción
+                    const usuarioNombre = item.NOMBRE_USUARIO || item.USUARIO_REGISTRA || item.USUARIO_REGISTRO || item.USUARIO || 'N/A';
+                    const descripcionTxt = item.DESCRICION || item.TIPO_MOVIMIENTO || item.MOTIVO || '-';
 
                     return (
                       <tr
@@ -719,128 +860,121 @@ export const HistorialProductos: React.FC = () => {
                         className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors group"
                       >
                         {/* 1. N° */}
-                        <td className="pl-6 pr-2 py-2.5 font-black text-xs text-primary tracking-tight whitespace-nowrap">
+                        <td className="pl-4 pr-1 py-2 font-black text-xs text-primary text-center tracking-tight whitespace-nowrap">
                           <span>{globalIdx}</span>
                         </td>
 
-                        {/* 2. Producto / Insumo */}
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isIngreso
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                                }`}
-                            >
-                              <span className="material-symbols-outlined text-base">
-                                {isIngreso ? 'arrow_downward' : 'arrow_upward'}
-                              </span>
-                            </div>
-                            <div className="min-w-0">
-                              <span className="font-black text-on-surface dark:text-zinc-100 uppercase block truncate max-w-[280px]">
-                                {item.PRODUCTO || item.NOMBRE || 'SIN DESCRIPCIÓN'}
-                              </span>
-                              <span className="text-[9px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-tight">
-                                {item.PRESENTACION || item.UNIDAD_MEDIDA || 'UNIDAD'}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 3. Tipo / Estado */}
-                        <td className="px-4 py-2.5 text-center">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${isIngreso
-                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20'
-                              }`}
-                          >
-                            <span className="material-symbols-outlined text-xs">
-                              {isIngreso ? 'login' : 'logout'}
+                        {/* Producto (solo si no hay filtro de producto único) */}
+                        {!selectedProducto && (
+                          <td className="px-2.5 py-2">
+                            <span className="font-black text-on-surface dark:text-zinc-100 uppercase block whitespace-normal break-words leading-tight max-w-[180px]">
+                              {item.PRODUCTO || item.PRODUCTO_DETALLE || item.NOMBRE || 'SIN DESCRIPCIÓN'}
                             </span>
-                            {item.TIPO_MOVIMIENTO || item.MOTIVO || (isIngreso ? 'Entrada' : 'Salida')}
+                          </td>
+                        )}
+
+                        {/* 2. Cantidad Ingreso */}
+                        <td className="px-2 py-2 text-right font-black whitespace-nowrap">
+                          <span className={cantIngreso > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}>
+                            {cantIngreso > 0 ? `+${cantIngreso.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '0.00'}
                           </span>
                         </td>
 
-                        {/* 4. Cantidad Operada */}
-                        <td className="px-4 py-2.5 text-right font-black whitespace-nowrap">
-                          <span
-                            className={
-                              isIngreso
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-rose-600 dark:text-rose-400'
-                            }
-                          >
-                            {isIngreso ? '+' : '-'}
-                            {cantVal.toLocaleString('es-ES', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                          <span className="text-[9px] font-bold text-zinc-400 ml-1 uppercase">
-                            {item.UNIDAD_MEDIDA || ''}
+                        {/* 3. Cantidad Utilizada */}
+                        <td className="px-2 py-2 text-right font-black whitespace-nowrap">
+                          <span className={cantUtilizada > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-400'}>
+                            {cantUtilizada > 0 ? `-${cantUtilizada.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '0.00'}
                           </span>
                         </td>
 
-                        {/* 5. Cantidad Utilizada */}
-                        <td className="px-4 py-2.5 text-right font-bold text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                          <span>
-                            {cantUsed.toLocaleString('es-ES', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
+                        {/* 4. Cantidad Disponible */}
+                        <td className="px-2 py-2 text-right font-black whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-md text-[11px] ${cantDisponible > 0
+                            ? 'bg-primary/10 text-primary dark:text-red-400 font-black'
+                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
+                            }`}>
+                            {cantDisponible.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </td>
 
-                        {/* 6. Lote */}
-                        <td className="px-4 py-2.5 text-center whitespace-nowrap">
+                        {/* 5. Medida */}
+                        <td className="px-2 py-2 text-center whitespace-nowrap">
                           <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-black text-[10px] uppercase">
-                            {item.LOTE || 'S/L'}
+                            {unidadMedida}
                           </span>
+                        </td>
+
+                        {/* 6. Cantidad Medida / Unidad Medida */}
+                        <td className="px-2 py-2 text-center whitespace-nowrap">
+                          {cantAdec && Number(cantAdec) > 0 ? (
+                            <div className="flex flex-col items-center leading-tight">
+                              <span className="font-black text-xs text-on-surface dark:text-zinc-100">
+                                {Number(cantAdec).toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[9px] font-bold text-zinc-400 dark:text-zinc-500 uppercase">
+                                {unidadAdec || unidadMedida || ''}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase">
+                              {item.PRESENTACION || '-'}
+                            </span>
+                          )}
                         </td>
 
                         {/* 7. Fecha Registro */}
-                        <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-400 text-xs font-medium whitespace-nowrap">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-on-surface dark:text-zinc-200">
-                              {formatDateOnly(item.FECHA_REGISTRO)}
+                        <td className="px-2 py-2 text-zinc-600 dark:text-zinc-400 text-xs text-center whitespace-nowrap">
+                          <div className="flex flex-col items-center">
+                            <span className="font-bold text-on-surface dark:text-zinc-200 leading-tight">
+                              {formatDateOnly(fechaReg)}
                             </span>
-                            <span className="text-[9px] text-zinc-400">
-                              {item.FECHA_REGISTRO?.includes('T')
-                                ? item.FECHA_REGISTRO.split('T')[1]?.substring(0, 8)
-                                : item.FECHA_REGISTRO?.includes(' ')
-                                  ? item.FECHA_REGISTRO.split(' ')[1]
+                            <span className="text-[9px] text-zinc-400 leading-none mt-0.5">
+                              {fechaReg?.includes('T')
+                                ? fechaReg.split('T')[1]?.substring(0, 8)
+                                : fechaReg?.includes(' ')
+                                  ? fechaReg.split(' ')[1]?.substring(0, 8)
                                   : ''}
                             </span>
                           </div>
                         </td>
 
-                        {/* 8. Responsable */}
-                        <td className="px-4 py-2.5 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 flex items-center justify-center text-[8px] font-black uppercase">
-                              {(item.NOMBRE_USUARIO || item.USUARIO_REGISTRO || item.USUARIO || 'U')
-                                .substring(0, 2)
-                                .toUpperCase()}
-                            </div>
-                            <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 uppercase truncate max-w-[130px]">
-                              {item.NOMBRE_USUARIO || item.USUARIO_REGISTRO || item.USUARIO || 'N/A'}
-                            </span>
-                          </div>
+                        {/* 8. Fecha Vencimiento */}
+                        <td className="px-2 py-2 text-center whitespace-nowrap">
+                          <span className="font-bold text-[10px] text-amber-600 dark:text-amber-400">
+                            {formatDateOnly(fechaVenc)}
+                          </span>
                         </td>
 
-                        {/* 9. Botón Acción Estandarizado */}
-                        <td className="px-6 py-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDetail(item)}
-                            title="Ver Detalle del Movimiento"
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer mx-auto"
-                          >
-                            <span className="material-symbols-outlined text-[14px] sm:text-base">
-                              visibility
-                            </span>
-                          </button>
+                        {/* 9. Usuario */}
+                        <td className="px-2.5 py-2">
+                          <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 uppercase block whitespace-normal break-words leading-tight max-w-[120px]">
+                            {usuarioNombre}
+                          </span>
+                        </td>
+
+                        {/* 10. Descripción */}
+                        <td className="px-2.5 py-2">
+                          <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 uppercase block whitespace-normal break-words leading-tight max-w-[180px]">
+                            {descripcionTxt}
+                          </span>
+                        </td>
+
+                        {/* 11. Acciones */}
+                        <td className="pr-4 pl-1 py-2 text-center whitespace-nowrap">
+                          {item.DETALLE?.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDetail(item)}
+                              title="Ver Detalle del Movimiento"
+                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary dark:text-red-500 border border-primary/20 dark:border-primary/10 hover:bg-primary hover:text-white hover:shadow-md transition-all flex items-center justify-center font-bold cursor-pointer mx-auto"
+                            >
+                              <span className="material-symbols-outlined text-[14px] sm:text-base">
+                                visibility
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-zinc-300 dark:text-zinc-600 text-xs font-black">-</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -852,7 +986,7 @@ export const HistorialProductos: React.FC = () => {
 
           {/* ── Table Footer / Pagination ── */}
           {!isLoading && filteredData.length > 0 && (
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 border-t border-zinc-100 dark:border-zinc-800/80">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-zinc-50/50 dark:bg-zinc-900/40 p-3.5 sm:p-4 border-t border-zinc-100 dark:border-zinc-800/80">
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 tracking-wider">

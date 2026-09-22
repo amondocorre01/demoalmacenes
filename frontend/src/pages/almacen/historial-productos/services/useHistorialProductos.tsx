@@ -41,10 +41,14 @@ export interface ProductoStockItem {
   ID_PRODUCTO_DETALLE?: number;
   ID_PRODUCTO_INTERMEDIO?: number;
   PRODUCTO?: string;
+  PRODUCTO_DETALLE?: string;
   NOMBRE?: string;
   CODIGO?: string;
   STOCK?: number | string;
   UNIDAD_MEDIDA?: string;
+  UNIDAD_MEDIDA_E?: string;
+  UNIDAD_MEDIDA_A?: string;
+  CANTIDAD_ADECUACION?: number | string;
   ID_UNIDAD_MEDIDA?: number;
   CATEGORIA?: string;
   SUB_CATEGORIA?: string;
@@ -54,9 +58,13 @@ export interface HistorialDetalleSubItem {
   ID_ALMACEN_INVENTARIO?: number;
   CANTIDAD?: number;
   CANTIDAD_UTILIZADA?: number;
+  CANTIDAD_DISPONIBLE?: number;
   FECHA_VENCIMIENTO?: string;
   LOTE?: string;
   UNIDAD_MEDIDA?: string;
+  UNIDAD_MEDIDA_E?: string;
+  UNIDAD_MEDIDA_A?: string;
+  CANTIDAD_ADECUACION?: number | string;
 }
 
 export interface HistorialInventarioItem {
@@ -67,24 +75,31 @@ export interface HistorialInventarioItem {
   ID_PRODUCTO_DETALLE?: number;
   ID_PRODUCTO_INTERMEDIO?: number;
   PRODUCTO?: string;
+  PRODUCTO_DETALLE?: string;
   NOMBRE?: string;
   CANTIDAD?: number | string;
   CANTIDAD_UTILIZADA?: number | string;
+  CANTIDAD_DISPONIBLE?: number | string;
   CANTIDAD_INGRESO?: number | string;
   CANTIDAD_SALIDA?: number | string;
   ESTADO_INGRESO?: number; // 1 = Ingreso / Entrada, 0/2 = Salida / Descuento
   STOCK?: number | string;
   STOCK_FINAL?: number | string;
   UNIDAD_MEDIDA?: string;
+  UNIDAD_MEDIDA_E?: string;
+  UNIDAD_MEDIDA_A?: string;
+  CANTIDAD_ADECUACION?: number | string;
   PRESENTACION?: string;
   FECHA_REGISTRO?: string;
   FECHA_VENCIMIENTO?: string;
   LOTE?: string;
   USUARIO?: string;
   USUARIO_REGISTRO?: string;
+  USUARIO_REGISTRA?: string;
   NOMBRE_USUARIO?: string;
   TIPO_MOVIMIENTO?: string;
   MOTIVO?: string;
+  DESCRICION?: string;
   ID_ESTADO?: number;
   DETALLE?: HistorialDetalleSubItem[];
 }

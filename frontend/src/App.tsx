@@ -13,6 +13,8 @@ import ListaAlmacenes from './pages/almacen/lista-almacenes/ListaAlmacenes';
 import CrearReceta from './pages/almacen/crear-receta/CrearReceta';
 import AsignarProducto from './pages/almacen/asignar-producto/AsignarProducto';
 //import PedidosConsolidados from './pages/almacen/pedidos-consolidados-almacen/PedidosConsolidadosAlmacen';
+import PedidosSucursalesParaAlmacen from './pages/almacen/pedidos-sucursales-vista/PedidosSucursalesParaAlmacen';
+import PedidosAlmacenSegunSucursales from './pages/almacen/pedidos-almacen-segun-sucursales/PedidosAlmacenSegunSucursales';
 import TransferenciaAlmacen from './pages/almacen/transferencia-almacen/TransferenciaAlmacen';
 import TransferenciaInsumos from './pages/almacen/transferencia-insumos/TransferenciaInsumos';
 import DevolucionAlmacen from './pages/almacen/devolucion-almacen/DevolucionAlmacen';
@@ -23,6 +25,8 @@ import DesperdicioManual from './pages/almacen/desperdicio-manual/DesperdicioMan
 import SolicitudesAlmacen from './pages/almacen/solicitudes-almacen/SolicitudesAlmacen';
 import PreRegistroProductos from './pages/almacen/pre-registro-productos/PreRegistroProductos';
 import ReposicionProductosVencidos from './pages/almacen/reposicion-productos-vencidos/ReposicionProductosVencidos';
+import ReposicionUsuarioAlmacen from './pages/almacen/reposicion-usuario-almacen/ReposicionUsuarioAlmacen';
+import ReposicionSucAlmacenProd from './pages/almacen/reposicion-suc-almacen/ReposicionSucAlmacenProd';
 import ListaPreciosInsumos from './pages/almacen/lista-precios-insumos/ListaPreciosInsumos';
 import ProductosIntermedios from './pages/almacen/productos-intermedios/ProductosIntermedios';
 import ProductosProducidos from './pages/almacen/productos-producidos/ProductosProducidos';
@@ -72,7 +76,9 @@ const App: React.FC = () => {
           <Route path="/almacen/config-declaracion" element={<ConfigDeclaracion />} />
 
           {/* ALMACÉN: OPERACIONES */}
-          {/* <Route path="/almacen/pedidos-consolidados-almacen" element={<PedidosConsolidadosAlmacen />} /> */}
+          <Route path="/almacen/pedidos-consolidados-almacen" element={<PedidosSucursalesParaAlmacen />} />
+          <Route path="/almacen/pedidos-sucursales-vista" element={<PedidosSucursalesParaAlmacen />} />
+          <Route path="/almacen/pedidos-almacen-segun-sucursales" element={<PedidosAlmacenSegunSucursales />} />
           <Route path="/almacen/solicitud" element={<SolicitudesAlmacen />} />
           <Route path="/almacen/transferencia" element={<TransferenciaAlmacen />} />
           <Route path="/almacen/transferencia-insumos" element={<TransferenciaInsumos />} />
@@ -90,6 +96,10 @@ const App: React.FC = () => {
 
           {/* AUDITORÍA, MERMAS Y REPOSICIÓN */}
           <Route path="/almacen/config-reposicion-area" element={<ConfigReposicion />} />
+          <Route path="/almacen/reposicion-usuario-almacen" element={<ReposicionUsuarioAlmacen />} />
+          <Route path="/almacen/reposicion-suc-almacen" element={<ReposicionSucAlmacenProd />} />
+          <Route path="/auditoria/reposicion-usuario-almacen" element={<ReposicionUsuarioAlmacen />} />
+          <Route path="/auditoria/reposicion-sucursales" element={<ReposicionSucAlmacenProd />} />
           <Route path="/auditoria/reposicion-vencidos-almacen" element={<ReposicionProductosVencidos />} />
           <Route path="/auditoria/desperdicio-vencidos-almacen" element={<DesperdicioInsumos />} />
           <Route path="/auditoria/desperdicio-manual-almacen" element={<DesperdicioManual />} />

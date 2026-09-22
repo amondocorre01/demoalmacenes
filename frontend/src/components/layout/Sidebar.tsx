@@ -36,7 +36,8 @@ const staticMenuItems: ApiMenuItem[] = [
   { id: 317, nombre: 'Configuración Declaración', ruta: '/almacen/config-declaracion', icono: 'tune', orden: 7 },
 
   // ALMACÉN: OPERACIONES
-  // { id: 321, nombre: 'Pedidos consolidados almacén', ruta: '/almacen/pedidos-consolidados-almacen', icono: 'inventory', orden: 7 },
+  { id: 321, nombre: 'Pedidos consolidados Sucursales', ruta: '/almacen/pedidos-consolidados-almacen', icono: 'inventory', orden: 7 },
+  { id: 321, nombre: 'Pedidos Almacén según Sucursales', ruta: '/almacen/pedidos-almacen-segun-sucursales', icono: 'inventory', orden: 7 },
   { id: 322, nombre: 'Solicitud Almacén', ruta: '/almacen/solicitud', icono: 'description', orden: 8 },
   { id: 323, nombre: 'Transferencia almacén', ruta: '/almacen/transferencia', icono: 'swap_horiz', orden: 9 },
   { id: 324, nombre: 'Transferencia Almacén Insumos', ruta: '/almacen/transferencia-insumos', icono: 'move_item', orden: 10 },
@@ -54,17 +55,19 @@ const staticMenuItems: ApiMenuItem[] = [
 
   // AUDITORÍA
   { id: 405, nombre: 'Configuración reposición', ruta: '/almacen/config-reposicion-area', icono: 'settings', orden: 20 },
+  { id: 406, nombre: 'Reposición usuario almacén', ruta: '/almacen/reposicion-usuario-almacen', icono: 'assignment_turned_in', orden: 20.5 },
+  { id: 4065, nombre: 'Reposición sucursales almacén', ruta: '/almacen/reposicion-suc-almacen', icono: 'storefront', orden: 20.7 },
   { id: 407, nombre: 'Reposición vencidos (Almacén)', ruta: '/auditoria/reposicion-vencidos-almacen', icono: 'hourglass_empty', orden: 21 },
   { id: 412, nombre: 'Desperdicio insumos vencidos', ruta: '/auditoria/desperdicio-vencidos-almacen', icono: 'delete', orden: 22 },
   { id: 413, nombre: 'Desperdicio manual almacén', ruta: '/auditoria/desperdicio-manual-almacen', icono: 'delete_forever', orden: 23 },
 
   // COMPRAS
-  { id: 505, nombre: 'Lista precios insumos', ruta: '/compras/lista-precios', icono: 'sell', orden: 24 },
+  //{ id: 505, nombre: 'Lista precios insumos', ruta: '/compras/lista-precios', icono: 'sell', orden: 24 },
 
   // CONFIGURACIÓN
   //{ id: 601, nombre: 'Registro de Producto', ruta: '/config/registro-producto', icono: 'add_box', orden: 25 },
   //{ id: 610, nombre: 'Guía Registro de Producto', ruta: '/config/guia-registro', icono: 'chrome_reader_mode', orden: 26 },
-  { id: 602, nombre: 'Pre-Registro Insumos', ruta: '/config/pre-registro', icono: 'app_registration', orden: 27 },
+  //{ id: 602, nombre: 'Pre-Registro Insumos', ruta: '/config/pre-registro', icono: 'app_registration', orden: 27 },
   // { id: 603, nombre: 'Registro Grupo Producto', ruta: '/config/registro-grupo', icono: 'category', orden: 28 },
   // { id: 604, nombre: 'Registro Facturas Insumos', ruta: '/almacen/registro-facturas-insumos', icono: 'receipt_long', orden: 29 }
 ];
