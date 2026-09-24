@@ -4,32 +4,37 @@
  * 1. Propósito de la vista:
  *    Gestión, control y monitoreo en tiempo real del inventario y existencias
  *    de materias primas, insumos y productos intermedios por almacén de la planta.
- *    Permite realizar conversiones/depreciaciones de productos (materia prima a
- *    procesados), consultar detalles de lotes y fechas de vencimiento, y exportar
- *    el balance de existencias.
+ *    Permite alternar entre productos activos (agrupados por fecha o por producto)
+ *    y productos vencidos, distinguir en columna dedicada entre insumos y productos
+ *    intermedios, visualizar cantidades de adecuación por unidad de medida, realizar
+ *    conversiones y exportar reportes completos a Excel y PDF.
  *
  * 2. APIs Utilizadas:
  *    - GET /inventario/reportes/almacenes?id_planta_almacen=0 (loadApiGetAlmacenesUsuario - Almacenes autorizados)
- *    - GET /inventario/reportes/:idAlmacen/inventario?tipo_group=1 (loadApiGetInventarioAlmacen - Stock e inventario)
+ *    - GET /inventario/reportes/:idAlmacen/inventario?tipo_group=1|2 (loadApiGetInventarioAlmacen - Stock por fecha [1] o por producto [2])
+ *    - GET /inventario/rep-desp/productos-vencidos?almacenes=X (loadApiGetProductosVencidos - Monitoreo de productos vencidos)
  *    - GET /inventario/reportes/:idAlmacen/productos (loadApiGetProductosAlmacen - Catálogo para conversión)
  *    - GET /inventario/reportes/:idAlmacen/productos-especiales (loadApiGetProductosEspeciales - Productos especiales de ingreso)
  *    - POST /inventario/reportes/:idAlmacen/depreciar (loadApiDepreciarProducto - Registrar conversión)
  *    - GET /inventario/reportes/:idAlmacen/depreciados (loadApiGetProductosDepreciados - Historial de transformaciones)
- *    - GET /inventario/rep-desp/productos-vencidos (loadApiGetProductosVencidos - Monitoreo de caducidad)
  *
  * 3. Controles Clave:
- *    - Selectores 100% autocompletables (MUI Autocomplete) con soporte de búsqueda en tiempo real.
- *    - Botón "Buscar" estandarizado (w-10 h-10 rounded-2xl bg-primary/10) para consultar el inventario del almacén.
- *    - Limpieza automática de la lista al cambiar de almacén hasta presionar Buscar.
- *    - Tarjetas de métricas consolidadas (Total de Ítems, En Stock, Stock Bajo y Sin Stock).
- *    - Tabla unificada compacta y responsiva conforme a AGENTS.md con buscador tipo píldora.
- *    - Paginación dinámica parametrizable (5, 10, 20, 50 registros por página).
- *    - Botón estandarizado de acción tipo icono para inspección de lotes y fechas de vencimiento.
- *    - Modal de transformación/conversión de materias primas con validaciones de saldo e historial integrado.
- *    - Exportación de existencias a formato CSV.
+ *    - Selector de Almacén autocomputable con MUI Autocomplete y búsqueda en tiempo real.
+ *    - Selector de Tipo de Consulta: "Activos" vs "Vencidos".
+ *    - Selector dinámico de "Tipo de Agrupación" visible únicamente en modo "Activos" (1: Por Fecha, 2: Por Producto).
+ *    - Cabeceras de tabla con división inteligente multilínea (función renderHeaderTitle).
+ *    - Columna dedicada para clasificar "TIPO PRODUCTO" (INSUMO vs INTERMEDIO).
+ *    - Columna "Cantidad Medida" formateada con la cantidad arriba y la unidad de medida (UNIDAD_MEDIDA_A) debajo.
+ *    - Visualización u ocultación condicional de la columna "F. Vencimiento" según el tipo de agrupación.
+ *    - Consulta automática y bajo demanda con botón "Buscar" estandarizado (lupa roja primario).
+ *    - Tarjetas de métricas adaptadas dinámicamente según el tipo de consulta.
+ *    - Tabla compacta y responsiva conforme a AGENTS.md con buscador tipo píldora y paginación.
+ *    - Modal de inspección de ingresos y lotes con detalle desglosado.
+ *    - Exportación a Excel y PDF con parametrización de filtros y columnas activas.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import dayjs from 'dayjs';
 import { Autocomplete, TextField } from '@mui/material';
 import { Button } from '../../../components/common/Button';
 import LoadingOverlay from '../../../components/common/LoadingOverlay';
@@ -44,22 +49,31 @@ import { ModalDetalleLotes } from './components/ModalDetalleLotes';
 import { ExportTableButtons } from '../../../components/common/ExportTableButtons';
 import { exportTableToExcel, exportTableToPdf, TableColumnConfig } from '../../../utils/exportTableHelper';
 
-interface StatusOption {
-  id: string;
+interface TipoProductoOption {
+  id: 'ACTIVOS' | 'VENCIDOS';
   label: string;
 }
 
-const STATUS_OPTIONS: StatusOption[] = [
-  { id: 'TODOS', label: 'TODOS LOS ESTADOS' },
-  { id: 'EN_STOCK', label: 'EN STOCK' },
-  { id: 'STOCK_BAJO', label: 'STOCK BAJO' },
-  { id: 'SIN_STOCK', label: 'SIN STOCK' },
+interface TipoAgrupacionOption {
+  id: number;
+  label: string;
+}
+
+const TIPO_PRODUCTO_OPTIONS: TipoProductoOption[] = [
+  { id: 'ACTIVOS', label: 'ACTIVOS' },
+  { id: 'VENCIDOS', label: 'VENCIDOS' },
+];
+
+const TIPO_AGRUPACION_OPTIONS: TipoAgrupacionOption[] = [
+  { id: 1, label: 'POR FECHA' },
+  { id: 2, label: 'POR PRODUCTO' },
 ];
 
 export const InventarioAlmacen: React.FC = () => {
   const {
     loadApiGetAlmacenesUsuario,
     loadApiGetInventarioAlmacen,
+    loadApiGetProductosVencidos,
   } = useInventarioAlmacenesServices();
 
   // Estados principales
@@ -69,8 +83,8 @@ export const InventarioAlmacen: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Filtros superiores autocompletables
-  const [selectedCategoryOption, setSelectedCategoryOption] = useState<string>('TODAS LAS CATEGORÍAS');
-  const [selectedStatusOption, setSelectedStatusOption] = useState<StatusOption>(STATUS_OPTIONS[0]);
+  const [selectedTipoProducto, setSelectedTipoProducto] = useState<TipoProductoOption>(TIPO_PRODUCTO_OPTIONS[0]);
+  const [selectedTipoAgrupacion, setSelectedTipoAgrupacion] = useState<TipoAgrupacionOption>(TIPO_AGRUPACION_OPTIONS[0]);
 
   // Filtro de tabla interno (Buscador píldora)
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -84,6 +98,27 @@ export const InventarioAlmacen: React.FC = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
   const [selectedItemDetail, setSelectedItemDetail] = useState<InventarioItem | null>(null);
 
+  // Helper para dividir títulos de cabecera si tienen 2 o más palabras
+  const renderHeaderTitle = (title: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const words = title.trim().split(/\s+/);
+    if (words.length <= 1) {
+      return <span>{title}</span>;
+    }
+    const alignClass =
+      align === 'right'
+        ? 'items-end text-right'
+        : align === 'center'
+          ? 'items-center text-center'
+          : 'items-start text-left';
+
+    return (
+      <div className={`flex flex-col ${alignClass} leading-tight`}>
+        <span>{words[0]}</span>
+        <span>{words.slice(1).join(' ')}</span>
+      </div>
+    );
+  };
+
   // 1. Cargar almacenes del usuario al montar el componente
   const fetchAlmacenes = async () => {
     setIsLoading(true);
@@ -92,6 +127,8 @@ export const InventarioAlmacen: React.FC = () => {
       let list: AlmacenItem[] = [];
       if (res && res.success && Array.isArray(res.datos)) {
         list = res.datos;
+      } else if (res && res.success && Array.isArray(res.data)) {
+        list = res.data;
       } else if (Array.isArray(res)) {
         list = res;
       }
@@ -99,7 +136,7 @@ export const InventarioAlmacen: React.FC = () => {
       setAlmacenes(list);
       if (list.length > 0) {
         setSelectedAlmacen(list[0]);
-        await fetchInventario(list[0].ID_PLANTA_ALMACEN);
+        await fetchInventario(list[0].ID_PLANTA_ALMACEN, selectedTipoProducto, selectedTipoAgrupacion);
       }
     } catch {
       setAlmacenes([]);
@@ -108,8 +145,12 @@ export const InventarioAlmacen: React.FC = () => {
     }
   };
 
-  // 2. Cargar inventario del almacén seleccionado al presionar Buscar
-  const fetchInventario = async (idAlmacen?: number) => {
+  // 2. Cargar inventario del almacén seleccionado según tipo (Activos vs Vencidos)
+  const fetchInventario = async (
+    idAlmacen?: number,
+    tipoProd = selectedTipoProducto,
+    tipoAgrup = selectedTipoAgrupacion
+  ) => {
     const targetId = idAlmacen || selectedAlmacen?.ID_PLANTA_ALMACEN;
     if (!targetId) {
       showAlert.error('Selección Requerida', 'Debe seleccionar un almacén para consultar el inventario.');
@@ -119,13 +160,50 @@ export const InventarioAlmacen: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const res = await loadApiGetInventarioAlmacen(targetId, 1);
-      if (res && res.success && Array.isArray(res.datos)) {
-        setInventarioList(res.datos);
-      } else if (Array.isArray(res)) {
-        setInventarioList(res);
+      if (tipoProd.id === 'VENCIDOS') {
+        // Llamada a la API de productos vencidos
+        const res = await loadApiGetProductosVencidos(targetId);
+        let list: any[] = [];
+        if (res && res.success && Array.isArray(res.data)) {
+          list = res.data;
+        } else if (res && res.success && Array.isArray(res.datos)) {
+          list = res.datos;
+        } else if (Array.isArray(res)) {
+          list = res;
+        } else if (res && Array.isArray(res.data)) {
+          list = res.data;
+        }
+
+        const mappedList: InventarioItem[] = list.map((item) => ({
+          ...item,
+          ID_PRODUCTO: item.ID_PRODUCTO || item.ID_PRODUCTO_DETALLE || 0,
+          PRODUCTO: item.PRODUCTO || item.NOMBRE || 'Producto sin nombre',
+          CANTIDAD: item.CANTIDAD !== undefined ? item.CANTIDAD : (item.STOCK !== undefined ? Number(item.STOCK) : 0),
+          STOCK: item.CANTIDAD !== undefined ? item.CANTIDAD : (item.STOCK !== undefined ? item.STOCK : 0),
+          UNIDAD_MEDIDA: item.UNIDAD_MEDIDA_E || item.UNIDAD_MEDIDA_A || item.UNIDAD_MEDIDA || 'UND',
+          ESTADO: 'VENCIDO',
+        }));
+
+        setInventarioList(mappedList);
       } else {
-        setInventarioList([]);
+        // Llamada a la API de productos activos con tipo_group (1: Por fecha, 2: Por producto)
+        const res = await loadApiGetInventarioAlmacen(targetId, tipoAgrup.id);
+        let list: any[] = [];
+        if (res && res.success && Array.isArray(res.datos)) {
+          list = res.datos;
+        } else if (res && res.success && Array.isArray(res.data)) {
+          list = res.data;
+        } else if (Array.isArray(res)) {
+          list = res;
+        }
+
+        const mappedList: InventarioItem[] = list.map((item) => ({
+          ...item,
+          CANTIDAD: item.CANTIDAD !== undefined ? item.CANTIDAD : (item.STOCK !== undefined ? Number(item.STOCK) : 0),
+          STOCK: item.CANTIDAD !== undefined ? item.CANTIDAD : (item.STOCK !== undefined ? item.STOCK : 0),
+        }));
+
+        setInventarioList(mappedList);
       }
       setPage(1);
     } catch {
@@ -139,37 +217,23 @@ export const InventarioAlmacen: React.FC = () => {
     fetchAlmacenes();
   }, []);
 
-  // Obtener categorías únicas disponibles para el Autocomplete
-  const categoryOptions = useMemo(() => {
-    const setCat = new Set<string>();
-    inventarioList.forEach((item) => {
-      const cat = item.CATEGORIA || item.SUB_CATEGORIA;
-      if (cat && cat.trim() !== '') {
-        setCat.add(cat.trim().toUpperCase());
-      }
-    });
-    return ['TODAS LAS CATEGORÍAS', ...Array.from(setCat).sort()];
-  }, [inventarioList]);
-
-  // Determinar estado de stock
-  const getItemStatus = (stockValue: number | string) => {
-    const stock = Number(stockValue) || 0;
-    if (stock <= 0) return 'Sin Stock';
-    if (stock <= 10) return 'Stock Bajo';
-    return 'En Stock';
-  };
+  const isModoVencidos = selectedTipoProducto.id === 'VENCIDOS';
+  // La columna de fecha se visualiza si es modo Vencidos o si es modo Activos Por Fecha (tipo_group = 1)
+  const showFechaVencimiento = isModoVencidos || selectedTipoAgrupacion.id === 1;
 
   // Métricas calculadas
   const metrics = useMemo(() => {
     let enStock = 0;
     let stockBajo = 0;
     let sinStock = 0;
+    let totalCantidad = 0;
 
     inventarioList.forEach((item) => {
-      const st = Number(item.STOCK) || 0;
-      if (st <= 0) {
+      const cant = Number(item.CANTIDAD !== undefined ? item.CANTIDAD : item.STOCK) || 0;
+      totalCantidad += cant;
+      if (cant <= 0) {
         sinStock += 1;
-      } else if (st <= 10) {
+      } else if (cant <= 10) {
         stockBajo += 1;
       } else {
         enStock += 1;
@@ -181,6 +245,7 @@ export const InventarioAlmacen: React.FC = () => {
       enStock,
       stockBajo,
       sinStock,
+      totalCantidad,
     };
   }, [inventarioList]);
 
@@ -188,29 +253,14 @@ export const InventarioAlmacen: React.FC = () => {
   const filteredItems = useMemo(() => {
     return inventarioList.filter((item) => {
       const prodName = (item.PRODUCTO || item.NOMBRE || '').toLowerCase();
+      const detalleName = (item.NOMBRE_DETALLE || '').toLowerCase();
       const sku = (item.SKU || item.CODIGO || '').toLowerCase();
       const cat = (item.CATEGORIA || item.SUB_CATEGORIA || '').toLowerCase();
       const term = searchQuery.toLowerCase().trim();
 
-      const matchesSearch = !term || prodName.includes(term) || sku.includes(term) || cat.includes(term);
-
-      const itemCategory = (item.CATEGORIA || item.SUB_CATEGORIA || '').toUpperCase();
-      const matchesCategory =
-        !selectedCategoryOption ||
-        selectedCategoryOption === 'TODAS LAS CATEGORÍAS' ||
-        itemCategory === selectedCategoryOption.toUpperCase();
-
-      const itemStatus = getItemStatus(item.STOCK);
-      const matchesStatus =
-        !selectedStatusOption ||
-        selectedStatusOption.id === 'TODOS' ||
-        (selectedStatusOption.id === 'EN_STOCK' && itemStatus === 'En Stock') ||
-        (selectedStatusOption.id === 'STOCK_BAJO' && itemStatus === 'Stock Bajo') ||
-        (selectedStatusOption.id === 'SIN_STOCK' && itemStatus === 'Sin Stock');
-
-      return matchesSearch && matchesCategory && matchesStatus;
+      return !term || prodName.includes(term) || detalleName.includes(term) || sku.includes(term) || cat.includes(term);
     });
-  }, [inventarioList, searchQuery, selectedCategoryOption, selectedStatusOption]);
+  }, [inventarioList, searchQuery]);
 
   // Paginación de items
   const totalItems = filteredItems.length;
@@ -220,54 +270,98 @@ export const InventarioAlmacen: React.FC = () => {
     return filteredItems.slice(start, start + pageSize);
   }, [filteredItems, page, pageSize]);
 
-  const exportColumns: TableColumnConfig[] = [
-    { header: 'N°', width: 45, align: 'center', type: 'number' },
-    { header: 'Producto / Insumo', width: 220, align: 'left' },
-    { header: 'SKU / Código', width: 110, align: 'center' },
-    { header: 'Categoría', width: 140, align: 'left' },
-    { header: 'Stock Actual', width: 95, align: 'right', type: 'number' },
-    { header: 'Unidad', width: 70, align: 'center' },
-    { header: 'Estado', width: 100, align: 'center' },
-  ];
+  // Columnas para exportación dinámicas
+  const exportColumns: TableColumnConfig[] = useMemo(() => {
+    const cols: TableColumnConfig[] = [
+      { header: 'N°', width: 45, align: 'center', type: 'number' },
+      { header: 'Tipo Producto', width: 100, align: 'center' },
+      { header: 'Producto / Insumo', width: 220, align: 'left' },
+      { header: 'Detalle / Presentación', width: 180, align: 'left' },
+      { header: isModoVencidos ? 'Cantidad Vencida' : 'Cantidad Disponible', width: 120, align: 'right', type: 'number' },
+      { header: 'U. Medida', width: 80, align: 'center' },
+      { header: 'Cantidad Medida', width: 120, align: 'right' },
+    ];
+
+    if (showFechaVencimiento) {
+      cols.push({ header: 'F. Vencimiento', width: 110, align: 'center' });
+    }
+
+    return cols;
+  }, [isModoVencidos, showFechaVencimiento]);
 
   const getExportData = () => {
-    return filteredItems.map((item, idx) => [
-      idx + 1,
-      item.PRODUCTO || item.NOMBRE || '-',
-      item.SKU || item.CODIGO || '-',
-      item.CATEGORIA || item.SUB_CATEGORIA || '-',
-      Number(item.STOCK || 0),
-      item.UNIDAD_MEDIDA || item.UNIDAD_MEDIDA_A || 'UND',
-      getItemStatus(item.STOCK),
-    ]);
+    return filteredItems.map((item, idx) => {
+      const cant = Number(item.CANTIDAD !== undefined ? item.CANTIDAD : item.STOCK || 0);
+      const isIntermedio = Boolean(item.ID_PRODUCTO_INTERMEDIO && Number(item.ID_PRODUCTO_INTERMEDIO) > 0);
+      const cantMedida =
+        item.CANTIDAD_ADECUACION !== undefined && Number(item.CANTIDAD_ADECUACION) > 0
+          ? `${Number(item.CANTIDAD_ADECUACION).toFixed(2)} ${item.UNIDAD_MEDIDA_A || ''}`.trim()
+          : '-';
+
+      const row = [
+        idx + 1,
+        isIntermedio ? 'INTERMEDIO' : 'INSUMO',
+        item.PRODUCTO || item.NOMBRE || '-',
+        item.NOMBRE_DETALLE || '-',
+        cant,
+        item.UNIDAD_MEDIDA_E || item.UNIDAD_MEDIDA_A || item.UNIDAD_MEDIDA || 'UND',
+        cantMedida,
+      ];
+
+      if (showFechaVencimiento) {
+        row.push(item.FECHA_VENCIMIENTO ? dayjs(item.FECHA_VENCIMIENTO).format('DD/MM/YYYY') : '-');
+      }
+
+      return row;
+    });
   };
 
   const handleExportExcel = () => {
     const data = getExportData();
     const alm = selectedAlmacen?.DESCRICION || 'ALMACÉN';
-    const totalStock = filteredItems.reduce((acc, curr) => acc + Number(curr.STOCK || 0), 0);
+    const totalStock = filteredItems.reduce(
+      (acc, curr) => acc + Number(curr.CANTIDAD !== undefined ? curr.CANTIDAD : curr.STOCK || 0),
+      0
+    );
+    const subtitle = isModoVencidos
+      ? `ALMACÉN: ${alm}   |   TIPO: PRODUCTOS VENCIDOS`
+      : `ALMACÉN: ${alm}   |   AGRUPACIÓN: ${selectedTipoAgrupacion.label}`;
+
+    const totals = showFechaVencimiento
+      ? ['', '', '', 'TOTAL', totalStock, '', '', '']
+      : ['', '', '', 'TOTAL', totalStock, '', ''];
 
     exportTableToExcel({
-      title: 'INVENTARIO DE ALMACÉN',
-      subtitle: `ALMACÉN: ${alm}   |   CATEGORÍA: ${selectedCategoryOption}   |   ESTADO: ${selectedStatusOption.label}`,
-      filename: `inventario_${alm.toLowerCase().replace(/\s+/g, '_')}_${dayjs().format('YYYYMMDD_HHmm')}`,
+      title: isModoVencidos ? 'REPORTE DE PRODUCTOS VENCIDOS' : 'INVENTARIO DE ALMACÉN',
+      subtitle,
+      filename: `inventario_${isModoVencidos ? 'vencidos_' : ''}${alm.toLowerCase().replace(/\s+/g, '_')}_${dayjs().format('YYYYMMDD_HHmm')}`,
       columns: exportColumns,
       data,
-      totals: ['', '', '', 'TOTAL STOCK', totalStock, '', ''],
+      totals,
     });
   };
 
   const handleExportPdf = () => {
     const data = getExportData();
     const alm = selectedAlmacen?.DESCRICION || 'ALMACÉN';
-    const totalStock = filteredItems.reduce((acc, curr) => acc + Number(curr.STOCK || 0), 0);
+    const totalStock = filteredItems.reduce(
+      (acc, curr) => acc + Number(curr.CANTIDAD !== undefined ? curr.CANTIDAD : curr.STOCK || 0),
+      0
+    );
+    const subtitle = isModoVencidos
+      ? `ALMACÉN: ${alm}   |   TIPO: PRODUCTOS VENCIDOS`
+      : `ALMACÉN: ${alm}   |   AGRUPACIÓN: ${selectedTipoAgrupacion.label}`;
+
+    const totals = showFechaVencimiento
+      ? ['', '', '', 'TOTAL', totalStock, '', '', '']
+      : ['', '', '', 'TOTAL', totalStock, '', ''];
 
     exportTableToPdf({
-      title: 'INVENTARIO DE ALMACÉN',
-      subtitle: `ALMACÉN: ${alm}   |   CATEGORÍA: ${selectedCategoryOption}   |   ESTADO: ${selectedStatusOption.label}`,
+      title: isModoVencidos ? 'REPORTE DE PRODUCTOS VENCIDOS' : 'INVENTARIO DE ALMACÉN',
+      subtitle,
       columns: exportColumns,
       data,
-      totals: ['', '', '', 'TOTAL STOCK', totalStock, '', ''],
+      totals,
     });
   };
 
@@ -311,69 +405,115 @@ export const InventarioAlmacen: React.FC = () => {
       </div>
 
       {/* ── Tarjetas de Métricas de Inventario ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant font-headline">
-              Total Productos
-            </p>
-            <h3 className="text-xl font-black text-on-surface mt-1 font-headline">
-              {metrics.total}
-            </h3>
+      {isModoVencidos ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 font-headline">
+                Productos Vencidos
+              </p>
+              <h3 className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1 font-headline">
+                {metrics.total}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">event_busy</span>
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 flex items-center justify-center">
-            <span className="material-symbols-outlined text-xl">category</span>
+
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 font-headline">
+                Cantidad Total Vencida
+              </p>
+              <h3 className="text-xl font-black text-amber-600 dark:text-amber-400 mt-1 font-headline">
+                {metrics.totalCantidad.toFixed(2)}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">production_quantity_limits</span>
+            </div>
+          </div>
+
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between sm:col-span-2 lg:col-span-1">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant font-headline">
+                Almacén Seleccionado
+              </p>
+              <h3 className="text-base font-black text-on-surface mt-1 font-headline uppercase truncate max-w-[200px]">
+                {selectedAlmacen?.DESCRICION || 'NO SELECCIONADO'}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">store</span>
+            </div>
           </div>
         </div>
-
-        <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-headline">
-              En Stock
-            </p>
-            <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-headline">
-              {metrics.enStock}
-            </h3>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant font-headline">
+                Total Ítems
+              </p>
+              <h3 className="text-xl font-black text-on-surface mt-1 font-headline">
+                {metrics.total}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">category</span>
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-            <span className="material-symbols-outlined text-xl">check_circle</span>
+
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 font-headline">
+                En Stock
+              </p>
+              <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-headline">
+                {metrics.enStock}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">check_circle</span>
+            </div>
+          </div>
+
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 font-headline">
+                Stock Bajo
+              </p>
+              <h3 className="text-xl font-black text-amber-600 dark:text-amber-400 mt-1 font-headline">
+                {metrics.stockBajo}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">warning</span>
+            </div>
+          </div>
+
+          <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 font-headline">
+                Sin Stock
+              </p>
+              <h3 className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1 font-headline">
+                {metrics.sinStock}
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-xl">inventory_2</span>
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 font-headline">
-              Stock Bajo
-            </p>
-            <h3 className="text-xl font-black text-amber-600 dark:text-amber-400 mt-1 font-headline">
-              {metrics.stockBajo}
-            </h3>
-          </div>
-          <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-            <span className="material-symbols-outlined text-xl">warning</span>
-          </div>
-        </div>
-
-        <div className="bg-surface rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 font-headline">
-              Sin Stock
-            </p>
-            <h3 className="text-xl font-black text-rose-600 dark:text-rose-400 mt-1 font-headline">
-              {metrics.sinStock}
-            </h3>
-          </div>
-          <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-            <span className="material-symbols-outlined text-xl">inventory_2</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Selector de Almacén y Filtros Estandarizado (AGENTS.md) ── */}
+      {/* ── Selector de Almacén y Filtros Estandarizados (AGENTS.md) ── */}
       <div className="flex flex-col lg:flex-row items-stretch gap-4 mb-2">
-        <div className="flex bg-surface p-3.5 rounded-2xl border border-outline-variant shadow-sm gap-3 items-end flex-col sm:flex-row flex-1">
-          {/* Selector de Almacén */}
-          <div className="w-full sm:flex-1 space-y-2">
+        <div className="flex bg-surface p-3.5 rounded-2xl border border-outline-variant shadow-sm gap-3 items-end flex-wrap flex-1">
+          {/* 1. Selector de Almacén */}
+          <div className="w-full sm:w-64 space-y-2 flex-1 min-w-[200px]">
             <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
               Seleccionar Almacén
             </label>
@@ -421,19 +561,22 @@ export const InventarioAlmacen: React.FC = () => {
             />
           </div>
 
-          {/* Selector de Categoría */}
-          <div className="w-full sm:w-64 space-y-2">
+          {/* 2. Selector de Tipo de Producto (Activos / Vencidos) */}
+          <div className="w-full sm:w-44 space-y-2">
             <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
-              Categoría
+              Tipo de Consulta
             </label>
             <Autocomplete
-              options={categoryOptions}
-              value={selectedCategoryOption}
+              options={TIPO_PRODUCTO_OPTIONS}
+              getOptionLabel={(option) => option.label}
+              value={selectedTipoProducto}
               onChange={(_, newValue) => {
-                setSelectedCategoryOption(newValue || 'TODAS LAS CATEGORÍAS');
-                setPage(1);
+                const val = newValue || TIPO_PRODUCTO_OPTIONS[0];
+                setSelectedTipoProducto(val);
+                setInventarioList([]);
               }}
-              noOptionsText="Sin categorías"
+              isOptionEqualToValue={(opt, val) => opt.id === val.id}
+              disableClearable
               fullWidth
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -460,64 +603,67 @@ export const InventarioAlmacen: React.FC = () => {
                   {...params}
                   variant="outlined"
                   size="small"
-                  placeholder="FILTRAR POR CATEGORÍA..."
+                  placeholder="ESTADO..."
                 />
               )}
             />
           </div>
 
-          {/* Selector de Estado */}
-          <div className="w-full sm:w-60 space-y-2">
-            <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
-              Estado de Stock
-            </label>
-            <Autocomplete
-              options={STATUS_OPTIONS}
-              getOptionLabel={(option) => option.label}
-              value={selectedStatusOption}
-              onChange={(_, newValue) => {
-                setSelectedStatusOption(newValue || STATUS_OPTIONS[0]);
-                setPage(1);
-              }}
-              isOptionEqualToValue={(opt, val) => opt.id === val.id}
-              noOptionsText="Sin opciones"
-              fullWidth
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: '15px',
-                  backgroundColor: 'var(--input-bg, var(--surface))',
-                  color: 'var(--on-surface)',
-                  padding: '3px 8px',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'var(--outline-variant)',
+          {/* 3. Selector de Tipo de Agrupación (Solo se visualiza si se selecciona ACTIVOS) */}
+          {selectedTipoProducto.id === 'ACTIVOS' && (
+            <div className="w-full sm:w-48 space-y-2 animate-fadeIn">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
+                Tipo de Agrupación
+              </label>
+              <Autocomplete
+                options={TIPO_AGRUPACION_OPTIONS}
+                getOptionLabel={(option) => option.label}
+                value={selectedTipoAgrupacion}
+                onChange={(_, newValue) => {
+                  const val = newValue || TIPO_AGRUPACION_OPTIONS[0];
+                  setSelectedTipoAgrupacion(val);
+                  setInventarioList([]);
+                }}
+                isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                disableClearable
+                fullWidth
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: '15px',
+                    backgroundColor: 'var(--input-bg, var(--surface))',
+                    color: 'var(--on-surface)',
+                    padding: '3px 8px',
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--outline-variant)',
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--outline)',
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'var(--primary)',
+                    },
+                    '& .MuiSvgIcon-root': {
+                      color: 'var(--on-surface-variant)',
+                    },
                   },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'var(--outline)',
-                  },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'var(--primary)',
-                  },
-                  '& .MuiSvgIcon-root': {
-                    color: 'var(--on-surface-variant)',
-                  },
-                },
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  variant="outlined"
-                  size="small"
-                  placeholder="FILTRAR POR ESTADO..."
-                />
-              )}
-            />
-          </div>
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    size="small"
+                    placeholder="AGRUPACIÓN..."
+                  />
+                )}
+              />
+            </div>
+          )}
 
           {/* Botón Buscar Exacto */}
           <button
             type="button"
-            onClick={() => fetchInventario(selectedAlmacen?.ID_PLANTA_ALMACEN)}
-            title="Buscar Inventario"
+            onClick={() => fetchInventario(selectedAlmacen?.ID_PLANTA_ALMACEN, selectedTipoProducto, selectedTipoAgrupacion)}
+            title="Buscar Existencias"
             className="w-10 h-10 rounded-2xl bg-primary/10 dark:bg-primary/20 border border-primary/20 dark:border-primary/10 flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all cursor-pointer shrink-0 shadow-inner"
           >
             <span className="material-symbols-outlined text-2xl font-bold">search</span>
@@ -530,9 +676,11 @@ export const InventarioAlmacen: React.FC = () => {
         {/* Cabecera interna con Buscador tipo Píldora */}
         <div className="p-3 sm:p-4 border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/40 flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-lg">format_list_bulleted</span>
+            <span className="material-symbols-outlined text-primary text-lg">
+              {isModoVencidos ? 'event_busy' : 'format_list_bulleted'}
+            </span>
             <h2 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-zinc-100 font-headline">
-              Listado de Insumos y Productos
+              {isModoVencidos ? 'Listado de Productos Vencidos' : 'Listado de Insumos y Productos'}
             </h2>
             <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-zinc-200/60 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
               {filteredItems.length}
@@ -551,7 +699,7 @@ export const InventarioAlmacen: React.FC = () => {
                 setSearchQuery(e.target.value);
                 setPage(1);
               }}
-              placeholder="BUSCAR PRODUCTO O SKU..."
+              placeholder="BUSCAR PRODUCTO..."
               className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl py-2 px-4 pl-9 text-[10px] font-black text-zinc-900 dark:text-zinc-100 transition-all uppercase tracking-widest focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none"
             />
           </div>
@@ -561,41 +709,48 @@ export const InventarioAlmacen: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-zinc-50/50 dark:bg-zinc-850/50 border-b border-zinc-100 dark:border-zinc-800">
-                <th className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
-                  N°
+              <tr className="bg-zinc-50/50 dark:bg-zinc-850/50 border-b border-zinc-100 dark:border-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+                <th className="pl-6 pr-1 py-3 whitespace-nowrap">
+                  {renderHeaderTitle('N°', 'left')}
                 </th>
-                <th className="pl-6 pr-2 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-                  Producto / Insumo
+                <th className="pl-4 pr-1 py-3">
+                  {renderHeaderTitle('PRODUCTO / INSUMO', 'left')}
                 </th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
-                  Categoría
+                <th className="px-3 py-3 text-center whitespace-nowrap">
+                  {renderHeaderTitle('TIPO PRODUCTO', 'center')}
                 </th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
-                  Stock Disponible
+                <th className="px-4 pr-0.5 py-3 text-right whitespace-nowrap">
+                  {renderHeaderTitle(isModoVencidos ? 'CANTIDAD VENCIDA' : 'CANTIDAD DISPONIBLE', 'right')}
                 </th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
-                  U. Medida
+                <th className="px-4 py-3 whitespace-nowrap">
+                  {renderHeaderTitle('U. MEDIDA', 'left')}
                 </th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-center whitespace-nowrap">
-                  Estado
+                <th className="px-4 pr-0.5 py-3 text-right whitespace-nowrap">
+                  {renderHeaderTitle('CANTIDAD MEDIDA', 'right')}
                 </th>
-                <th className="pl-2 pr-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 text-right whitespace-nowrap">
-                  Acciones
+                {showFechaVencimiento && (
+                  <th className="px-4 py-3 text-center whitespace-nowrap">
+                    {renderHeaderTitle('FECHA VENCIMIENTO', 'center')}
+                  </th>
+                )}
+                <th className="pl-2 pr-1 py-3 text-right whitespace-nowrap">
+                  {renderHeaderTitle('ACCIONES', 'right')}
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50 dark:divide-zinc-850">
               {paginatedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 dark:text-zinc-500">
+                  <td colSpan={showFechaVencimiento ? 8 : 7} className="px-6 py-12 text-center text-zinc-400 dark:text-zinc-500">
                     <div className="flex flex-col items-center justify-center">
                       <span className="material-symbols-outlined text-3xl mb-1 opacity-40">
-                        inventory
+                        {isModoVencidos ? 'event_busy' : 'inventory'}
                       </span>
                       <p className="text-[10px] font-black uppercase tracking-widest">
                         {selectedAlmacen
-                          ? 'No se encontraron productos en el inventario para los filtros seleccionados.'
+                          ? isModoVencidos
+                            ? 'No se encontraron productos vencidos en este almacén.'
+                            : 'No se encontraron productos en el inventario para los filtros seleccionados.'
                           : 'Seleccione un almacén y presione Buscar para consultar las existencias.'}
                       </p>
                     </div>
@@ -604,7 +759,9 @@ export const InventarioAlmacen: React.FC = () => {
               ) : (
                 paginatedItems.map((item, idx) => {
                   const itemIndex = (page - 1) * pageSize + idx + 1;
-                  const status = getItemStatus(item.STOCK);
+                  const cant = Number(item.CANTIDAD !== undefined ? item.CANTIDAD : item.STOCK || 0);
+                  const isIntermedio = Boolean(item.ID_PRODUCTO_INTERMEDIO && Number(item.ID_PRODUCTO_INTERMEDIO) > 0);
+                  const cantAdecuacion = Number(item.CANTIDAD_ADECUACION || 0);
 
                   return (
                     <tr
@@ -616,61 +773,81 @@ export const InventarioAlmacen: React.FC = () => {
                         <span>{itemIndex}</span>
                       </td>
 
-                      {/* Producto */}
-                      <td className="pl-6 pr-2 py-2">
+                      {/* Producto / Insumo */}
+                      <td className="pl-4 pr-1 py-2">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 flex items-center justify-center shrink-0">
-                            <span className="material-symbols-outlined text-sm">package_2</span>
-                          </div>
                           <div>
                             <p className="text-xs font-black text-zinc-900 dark:text-zinc-100 uppercase tracking-tight leading-none">
-                              {item.PRODUCTO || item.NOMBRE || 'Producto sin nombre'}
+                              {item.NOMBRE_DETALLE || item.NOMBRE || 'Producto sin nombre'}
                             </p>
-                            {(item.SKU || item.CODIGO) && (
-                              <p className="text-[9px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mt-0.5">
-                                SKU: {item.SKU || item.CODIGO}
+                            {item.PRODUCTO ? (
+                              <p className="text-[10px] font-bold text-primary uppercase tracking-tight mt-0.5">
+                                {item.PRODUCTO}
                               </p>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </td>
 
-                      {/* Categoría */}
-                      <td className="px-4 py-2 font-bold text-xs text-zinc-600 dark:text-zinc-350 uppercase whitespace-nowrap">
-                        {item.CATEGORIA || item.SUB_CATEGORIA || '-'}
+                      {/* Columna Tipo Producto (Insumo vs Intermedio) */}
+                      <td className="px-3 py-2 text-center whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${isIntermedio
+                            ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-900/40'
+                            : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-900/40'
+                            }`}
+                        >
+                          {isIntermedio ? 'INTERMEDIO' : 'INSUMO'}
+                        </span>
                       </td>
 
-                      {/* Stock */}
-                      <td className="px-4 py-2 text-right font-black text-xs text-zinc-900 dark:text-zinc-100 font-headline whitespace-nowrap">
-                        {Number(item.STOCK || 0).toFixed(2)}
+                      {/* Stock / Cantidad Disponible */}
+                      <td
+                        className={`px-4 pr-0.5 py-2 text-right font-black text-[10px] font-headline whitespace-nowrap ${isModoVencidos ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-900 dark:text-zinc-100'
+                          }`}
+                      >
+                        {cant.toFixed(2)}
                       </td>
 
                       {/* Unidad de Medida */}
-                      <td className="px-4 py-2 font-bold text-xs text-zinc-500 dark:text-zinc-400 uppercase whitespace-nowrap">
-                        {item.UNIDAD_MEDIDA || item.UNIDAD_MEDIDA_A || item.UNIDAD_MEDIDA_D || item.UNIDAD_MEDIDA_E || '-'}
+                      <td className="px-4 pr-0.5 py-2 font-bold text-[10px] text-zinc-500 dark:text-zinc-400 uppercase whitespace-nowrap">
+                        {item.UNIDAD_MEDIDA_E || item.UNIDAD_MEDIDA_A || item.UNIDAD_MEDIDA || 'UND'}
                       </td>
 
-                      {/* Estado */}
-                      <td className="px-4 py-2 text-center whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${status === 'En Stock'
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-900/40'
-                            : status === 'Stock Bajo'
-                              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/80 dark:border-amber-900/40'
-                              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40'
-                            }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${status === 'En Stock'
-                              ? 'bg-emerald-500'
-                              : status === 'Stock Bajo'
-                                ? 'bg-amber-500'
-                                : 'bg-rose-500'
-                              }`}
-                          />
-                          {status}
-                        </span>
+                      {/* Cantidad Medida (Cantidad arriba, UNIDAD_MEDIDA_A debajo) */}
+                      <td className="px-4 pr-0.5 py-2 text-right whitespace-nowrap">
+                        {cantAdecuacion > 0 ? (
+                          <div className="flex flex-col items-end leading-tight">
+                            <span className="font-headline font-black text-[10px] text-zinc-900 dark:text-zinc-100">
+                              {cantAdecuacion.toFixed(2)}
+                            </span>
+                            <span className="text-[9px] font-bold text-zinc-400 dark:text-zinc-500 uppercase mt-0.5">
+                              {item.UNIDAD_MEDIDA_A || '-'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-zinc-400">-</span>
+                        )}
                       </td>
+
+                      {/* F. Vencimiento (Solo visible cuando corresponde) */}
+                      {showFechaVencimiento && (
+                        <td className="px-4 py-2 text-center whitespace-nowrap">
+                          {item.FECHA_VENCIMIENTO ? (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${isModoVencidos
+                                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/40'
+                                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700'
+                                }`}
+                            >
+                              {isModoVencidos && <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
+                              {dayjs(item.FECHA_VENCIMIENTO).format('DD/MM/YYYY')}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-zinc-400">-</span>
+                          )}
+                        </td>
+                      )}
 
                       {/* Botones de Acción */}
                       <td className="pl-2 pr-6 py-2 text-right whitespace-nowrap">
@@ -752,7 +929,7 @@ export const InventarioAlmacen: React.FC = () => {
         onClose={() => setIsConversionModalOpen(false)}
         almacenes={almacenes}
         currentAlmacen={selectedAlmacen}
-        onSuccess={() => fetchInventario()}
+        onSuccess={() => fetchInventario(selectedAlmacen?.ID_PLANTA_ALMACEN, selectedTipoProducto, selectedTipoAgrupacion)}
       />
 
       <ModalDetalleLotes

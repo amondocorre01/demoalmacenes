@@ -6,6 +6,8 @@ import {
   DialogActions,
   IconButton,
   Zoom,
+  Autocomplete,
+  TextField,
   useTheme,
   useMediaQuery
 } from '@mui/material';
@@ -38,11 +40,11 @@ interface RelacionItem {
 interface Warehouse {
   ID_PLANTA_ALMACEN: number;
   DESCRICION: string;
-  ESTADO: number;
-  ESTADO_PRODUCCION?: number;
-  GESTION_PI?: number;
-  SOLICITUD_PLANTA?: number;
-  ENTREGA_PLANTA?: number;
+  ESTADO: number | boolean;
+  ESTADO_PRODUCCION?: number | boolean;
+  GESTION_PI?: number | boolean;
+  SOLICITUD_PLANTA?: number | boolean;
+  ENTREGA_PLANTA?: number | boolean;
   solicita_a?: RelacionItem[];
   puede_solicitarle?: RelacionItem[];
 }
@@ -75,24 +77,26 @@ export const ModalRelacionesAlmacen: React.FC<ModalRelacionesAlmacenProps> = ({
     }
   }, [open, initialWarehouse, allWarehouses]);
 
+  const isFlagActive = (val: any): boolean => val === true || val === 1 || val === '1';
+
   // Helper para resolver los datos completos de un almacén referenciado por ID
   const resolveWarehouseInfo = (item: RelacionItem): { id: number; nombre: string; activo: boolean } => {
     const id = item.id_almacen ?? item.ID_PLANTA_ALMACEN ?? 0;
-    
+
     // Buscar en la lista general de almacenes
     const found = allWarehouses.find(w => w.ID_PLANTA_ALMACEN === id);
     if (found) {
       return {
         id,
         nombre: found.DESCRICION,
-        activo: found.ESTADO === 1
+        activo: isFlagActive(found.ESTADO)
       };
     }
 
     return {
       id,
       nombre: item.DESCRICION || `Almacén #${id}`,
-      activo: item.estado !== 0
+      activo: item.estado !== 0 && item.estado !== false
     };
   };
 
@@ -114,14 +118,15 @@ export const ModalRelacionesAlmacen: React.FC<ModalRelacionesAlmacenProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
       maxWidth="md"
       fullWidth
-      TransitionComponent={Zoom}
       slotProps={{
         paper: {
           sx: {
-            borderRadius: isMobile ? 0 : '1.75rem',
+            width: isMobile ? '100%' : undefined,
+            maxWidth: isMobile ? '100%' : '880px',
+            m: isMobile ? 0 : 2,
+            borderRadius: isMobile ? '1rem' : '1.75rem',
             overflow: 'hidden',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
             bgcolor: 'var(--surface, #ffffff)',
@@ -165,36 +170,87 @@ export const ModalRelacionesAlmacen: React.FC<ModalRelacionesAlmacenProps> = ({
       <DialogContent sx={{ p: { xs: 2, sm: 3 }, bgcolor: 'var(--surface, #ffffff)', maxH: '80vh', overflowY: 'auto' }}>
         <div className="space-y-4">
 
-          {/* Almacén en Consulta (Visualización solo texto) */}
-          <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-1">
-            <span className="text-[9px] font-black text-primary uppercase tracking-widest font-headline block mb-1">
-              Almacén en Consulta
-            </span>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
+          {/* Almacén en Consulta y Selector Autocompletable */}
+          <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              {/* Información del Almacén Actual */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
                   <span className="material-symbols-outlined text-xl">warehouse</span>
                 </div>
-                <div>
-                  <h3 className="text-base font-black text-on-surface uppercase tracking-tight font-headline">
+                <div className="min-w-0">
+                  <span className="text-[9px] font-black text-primary uppercase tracking-widest font-headline block leading-none mb-1">
+                    Almacén en Consulta
+                  </span>
+                  <h3 className="text-sm sm:text-base font-black text-on-surface uppercase tracking-tight font-headline truncate">
                     {currentWarehouse?.DESCRICION || 'SIN ALMACÉN SELECCIONADO'}
                   </h3>
                   {currentWarehouse && (
-                    <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider block mt-0.5">
-                      ID: #{currentWarehouse.ID_PLANTA_ALMACEN}
-                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[8.5px] font-black text-on-surface-variant uppercase tracking-wider">
+                        ID: #{currentWarehouse.ID_PLANTA_ALMACEN}
+                      </span>
+                      <span className={`text-[7.5px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider ${isFlagActive(currentWarehouse.ESTADO)
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                        }`}>
+                        {isFlagActive(currentWarehouse.ESTADO) ? '● Activo' : '○ Inactivo'}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
-              {currentWarehouse && (
-                <span className={`text-[8.5px] font-black uppercase px-3 py-1 rounded-lg tracking-wider self-start sm:self-center shrink-0 ${
-                  currentWarehouse.ESTADO === 1
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                    : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                }`}>
-                  {currentWarehouse.ESTADO === 1 ? '● Almacén Activo' : '○ Almacén Inactivo'}
-                </span>
-              )}
+
+              {/* Autocompletable al lado para seleccionar/cambiar el almacén a consultar */}
+              <div className="w-full md:w-80 space-y-1.5 shrink-0">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1 font-headline">
+                  Seleccionar Almacén a Consultar
+                </label>
+                <Autocomplete
+                  options={allWarehouses}
+                  getOptionLabel={(option) => option.DESCRICION || ''}
+                  value={currentWarehouse}
+                  onChange={(_, newValue) => {
+                    if (newValue) {
+                      setCurrentWarehouse(newValue);
+                    }
+                  }}
+                  isOptionEqualToValue={(option, value) =>
+                    option.ID_PLANTA_ALMACEN === value?.ID_PLANTA_ALMACEN
+                  }
+                  fullWidth
+                  disableClearable
+                  noOptionsText="No hay almacenes disponibles"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '15px',
+                      backgroundColor: 'var(--input-bg, var(--surface))',
+                      color: 'var(--on-surface)',
+                      padding: '3px 8px',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline-variant)',
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--outline)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary)',
+                      },
+                      '& .MuiSvgIcon-root': {
+                        color: 'var(--on-surface-variant)',
+                      },
+                    },
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      variant="outlined"
+                      size="small"
+                      placeholder="SELECCIONAR ALMACÉN..."
+                    />
+                  )}
+                />
+              </div>
             </div>
           </div>
 
@@ -259,11 +315,10 @@ export const ModalRelacionesAlmacen: React.FC<ModalRelacionesAlmacenProps> = ({
                           </span>
                         </div>
                       </div>
-                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shrink-0 ${
-                        item.activo
-                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                          : 'bg-zinc-500/15 text-zinc-500 border border-zinc-500/30'
-                      }`}>
+                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shrink-0 ${item.activo
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                        : 'bg-zinc-500/15 text-zinc-500 border border-zinc-500/30'
+                        }`}>
                         {item.activo ? 'Autorizado' : 'Inactivo'}
                       </span>
                     </div>
@@ -323,11 +378,10 @@ export const ModalRelacionesAlmacen: React.FC<ModalRelacionesAlmacenProps> = ({
                           </span>
                         </div>
                       </div>
-                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shrink-0 ${
-                        item.activo
-                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                          : 'bg-zinc-500/15 text-zinc-500 border border-zinc-500/30'
-                      }`}>
+                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shrink-0 ${item.activo
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                        : 'bg-zinc-500/15 text-zinc-500 border border-zinc-500/30'
+                        }`}>
                         {item.activo ? 'Autorizado' : 'Inactivo'}
                       </span>
                     </div>

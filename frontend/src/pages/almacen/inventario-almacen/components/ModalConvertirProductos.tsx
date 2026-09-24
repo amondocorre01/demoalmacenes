@@ -435,15 +435,41 @@ export const ModalConvertirProductos: React.FC<ModalConvertirProductosProps> = (
                     <Autocomplete
                       loading={isLoadingCatalogs}
                       options={productosSalida}
-                      getOptionLabel={(option) => option.PRODUCTO || ''}
+                      getOptionLabel={(option) => {
+                        const name = option.PRODUCTO || '';
+                        const unit = option.UNIDAD_MEDIDA || option.UNIDAD_MEDIDA_E || option.UNIDAD_MEDIDA_A || '';
+                        const rawStock = option.STOCK !== undefined ? option.STOCK : option.CANTIDAD;
+                        const stockStr = rawStock !== undefined ? ` (Stock: ${Number(rawStock).toFixed(2)} ${unit})` : unit ? ` (${unit})` : '';
+                        return `${name}${stockStr}`;
+                      }}
                       value={selectedSaliente}
-                      onChange={(_, newValue) => setSelectedSaliente(newValue)}
+                      onChange={(_, newValue) => { setSelectedSaliente(newValue); console.log("SELECCIONADO: ", newValue); }}
                       isOptionEqualToValue={(opt, val) =>
                         opt.ID_PRODUCTO === val?.ID_PRODUCTO &&
                         opt.ID_PRODUCTO_INTERMEDIO === val?.ID_PRODUCTO_INTERMEDIO
                       }
                       fullWidth
                       noOptionsText={isLoadingCatalogs ? 'Cargando productos...' : 'No hay productos disponibles'}
+                      renderOption={(props, option) => {
+                        const { key, ...optionProps } = props;
+                        const unit = option.UNIDAD_MEDIDA || option.UNIDAD_MEDIDA_E || option.UNIDAD_MEDIDA_A || '';
+                        const rawStock = option.STOCK !== undefined ? option.STOCK : option.CANTIDAD;
+                        return (
+                          <li key={key} {...optionProps} className="!flex !justify-between !items-center !py-2 !px-3 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase">{option.PRODUCTO}</span>
+                              {unit && (
+                                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase font-medium">{unit}</span>
+                              )}
+                            </div>
+                            {rawStock !== undefined && (
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-900/40 font-headline">
+                                Stock: {Number(rawStock || 0).toFixed(2)}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: '15px',
@@ -474,35 +500,38 @@ export const ModalConvertirProductos: React.FC<ModalConvertirProductosProps> = (
                       )}
                     />
                   </div>
+
+                  {/* Detalle visual de Unidad de Medida y Stock para Producto Saliente */}
+                  {selectedSaliente && (
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-rose-200/80 dark:border-rose-900/50 shadow-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Unidad:</span>
+                        <span className="text-xs font-black text-rose-700 dark:text-rose-400 uppercase">
+                          {selectedSaliente.UNIDAD_MEDIDA || selectedSaliente.UNIDAD_MEDIDA_E || selectedSaliente.UNIDAD_MEDIDA_A || 'UND'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Stock Disponible:</span>
+                        <span className="text-xs font-black px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 font-headline">
+                          {Number(selectedSaliente.STOCK !== undefined ? selectedSaliente.STOCK : selectedSaliente.CANTIDAD || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-2 space-y-1.5">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
                     Cantidad de Salida (A Descontar) <span className="text-primary">*</span>
                   </label>
-                  <TextField
-                    fullWidth
+                  <input
                     type="number"
-                    size="small"
+                    min="0"
+                    step="any"
                     value={qtySalida}
-                    onChange={(e) => setQtySalida(e.target.value)}
+                    onChange={(e) => setQtySalida(e.target.value === '' ? '' : e.target.value)}
                     placeholder="0.00"
-                    slotProps={{
-                      htmlInput: { min: 0, step: 'any' },
-                    }}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: '15px',
-                        backgroundColor: 'var(--input-bg, var(--surface))',
-                        color: 'var(--on-surface)',
-                        '& input': {
-                          fontWeight: '900',
-                          textAlign: 'center',
-                          color: '#e11d48',
-                          fontSize: '1.1rem',
-                        },
-                      },
-                    }}
+                    className="w-full h-10 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 text-xs font-bold text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                   />
                 </div>
               </div>
@@ -526,16 +555,29 @@ export const ModalConvertirProductos: React.FC<ModalConvertirProductosProps> = (
                     <Autocomplete
                       loading={isLoadingCatalogs}
                       options={productosIngreso}
-                      getOptionLabel={(option) =>
-                        option.NOMBRE
-                          ? `${option.NOMBRE} ${option.UNIDAD_MEDIDA ? `(${option.UNIDAD_MEDIDA})` : ''}`
-                          : ''
-                      }
+                      getOptionLabel={(option) => {
+                        const name = option.NOMBRE || '';
+                        const unit = option.UNIDAD_MEDIDA ? ` (${option.UNIDAD_MEDIDA})` : '';
+                        return `${name}${unit}`;
+                      }}
                       value={selectedIngreso}
                       onChange={(_, newValue) => setSelectedIngreso(newValue)}
                       isOptionEqualToValue={(opt, val) => opt.ID_PRODUCTO === val?.ID_PRODUCTO}
                       fullWidth
                       noOptionsText={isLoadingCatalogs ? 'Cargando productos...' : 'No hay productos especiales'}
+                      renderOption={(props, option) => {
+                        const { key, ...optionProps } = props;
+                        return (
+                          <li key={key} {...optionProps} className="!flex !justify-between !items-center !py-2 !px-3 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase">{option.NOMBRE}</span>
+                            {option.UNIDAD_MEDIDA && (
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-900/40">
+                                {option.UNIDAD_MEDIDA}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: '15px',
@@ -566,35 +608,32 @@ export const ModalConvertirProductos: React.FC<ModalConvertirProductosProps> = (
                       )}
                     />
                   </div>
+
+                  {/* Detalle visual de Unidad de Medida para Producto Entrante */}
+                  {selectedIngreso && (
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-emerald-200/80 dark:border-emerald-900/50 shadow-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Unidad de Medida:</span>
+                        <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 uppercase">
+                          {selectedIngreso.UNIDAD_MEDIDA || 'UND'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-2 space-y-1.5">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 ml-1">
                     Cantidad de Ingreso (A Registrar) <span className="text-primary">*</span>
                   </label>
-                  <TextField
-                    fullWidth
+                  <input
                     type="number"
-                    size="small"
+                    min="0"
+                    step="any"
                     value={qtyIngreso}
-                    onChange={(e) => setQtyIngreso(e.target.value)}
+                    onChange={(e) => setQtyIngreso(e.target.value === '' ? '' : e.target.value)}
                     placeholder="0.00"
-                    slotProps={{
-                      htmlInput: { min: 0, step: 'any' },
-                    }}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: '15px',
-                        backgroundColor: 'var(--input-bg, var(--surface))',
-                        color: 'var(--on-surface)',
-                        '& input': {
-                          fontWeight: '900',
-                          textAlign: 'center',
-                          color: '#059669',
-                          fontSize: '1.1rem',
-                        },
-                      },
-                    }}
+                    className="w-full h-10 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 text-xs font-bold text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                   />
                 </div>
               </div>

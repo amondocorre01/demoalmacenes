@@ -54,6 +54,8 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
   const [formData, setFormData] = useState(defaultForm);
   const isEditing = !!data;
 
+  const isFlagActive = (val: any): boolean => val === true || val === 1 || val === '1';
+
   // ───────────── Carga de formulario ─────────────
   useEffect(() => {
     if (!open) return;
@@ -66,11 +68,11 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
 
       setFormData({
         nombre: data.DESCRICION || '',
-        produccion: data.ESTADO_PRODUCCION == 1,
-        activo: data.ESTADO === 1,
-        gestion_pi: data.GESTION_PI == 1,
-        solicitud_planta: data.SOLICITUD_PLANTA == 1,
-        entrega_planta: data.ENTREGA_PLANTA == 1,
+        produccion: isFlagActive(data.ESTADO_PRODUCCION),
+        activo: isFlagActive(data.ESTADO),
+        gestion_pi: isFlagActive(data.GESTION_PI),
+        solicitud_planta: isFlagActive(data.SOLICITUD_PLANTA),
+        entrega_planta: isFlagActive(data.ENTREGA_PLANTA),
         solicita_a: solicita_a_loaded,
       });
     } else {
@@ -140,14 +142,13 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={handleCancel}
-      maxWidth="sm"
+      maxWidth="md"
       fullWidth
-      TransitionComponent={Zoom}
       slotProps={{
         paper: {
           sx: {
             width: isMobile ? '100%' : undefined,
+            maxWidth: isMobile ? '100%' : '880px',
             m: isMobile ? 0 : 2,
             borderRadius: isMobile ? '1rem' : '1.75rem',
             overflow: 'hidden',
@@ -190,284 +191,294 @@ const ModalNewAlmacen: React.FC<ModalNewAlmacenProps> = ({
       </DialogTitle>
 
       {/* ── Cuerpo del Formulario ── */}
-      <DialogContent sx={{ p: { xs: 2, sm: 3 }, bgcolor: 'var(--surface, #ffffff)', maxH: '78vh', overflowY: 'auto' }}>
-        <div className="space-y-5">
+      <DialogContent sx={{ p: { xs: 2, sm: 3 }, bgcolor: 'var(--surface, #ffffff)', maxH: '80vh', overflowY: 'auto' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          {/* ── BLOQUE 1: Datos Principales ── */}
-          <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
-            <div className="flex items-center justify-between border-b border-outline-variant/40 pb-2">
-              <div className="flex items-center gap-2 text-primary">
-                <span className="material-symbols-outlined text-lg">badge</span>
-                <span className="text-[10px] font-black uppercase tracking-widest font-headline">Información Principal</span>
+          {/* ── COLUMNA IZQUIERDA (Datos Principales + Operaciones) ── */}
+          <div className="space-y-4">
+            {/* ── BLOQUE 1: Datos Principales ── */}
+            <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
+              <div className="flex items-center justify-between border-b border-outline-variant/40 pb-2">
+                <div className="flex items-center gap-2 text-primary">
+                  <span className="material-symbols-outlined text-lg">badge</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest font-headline">Información Principal</span>
+                </div>
+                {isEditing && (
+                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider ${formData.activo ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'}`}>
+                    {formData.activo ? '● Almacén Activo' : '○ Almacén Inactivo'}
+                  </span>
+                )}
               </div>
-              {isEditing && (
-                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider ${formData.activo ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'}`}>
-                  {formData.activo ? '● Almacén Activo' : '○ Almacén Inactivo'}
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest block ml-0.5">
+                  Nombre Oficial del Almacén <span className="text-primary">*</span>
+                </label>
+                <TextField
+                  fullWidth
+                  placeholder="EJEMPLO: ALMACÉN DE MATERIA PRIMA"
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value.toUpperCase() })}
+                  size="small"
+                  autoFocus
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '14px',
+                      bgcolor: 'var(--surface, #ffffff)',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      color: 'var(--on-surface, #18181b)',
+                      '& fieldset': { borderColor: 'var(--border-outline-variant, #e4e4e7)' },
+                      '&:hover fieldset': { borderColor: 'var(--primary, #9d0013)' },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--primary, #9d0013)' }
+                    },
+                    '& .MuiInputBase-input': { fontSize: '11px', py: '10px !important' }
+                  }}
+                />
+                <span className="text-[8px] font-medium text-on-surface-variant block ml-1 opacity-70">
+                  Escriba un nombre descriptivo único para identificar el almacén en los reportes.
                 </span>
+              </div>
+
+              {/* Switch Estado del Almacén (Solo al editar) */}
+              {isEditing && (
+                <div className="p-3 bg-surface rounded-xl border border-outline-variant/60 flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
+                      Estado Operativo
+                    </p>
+                    <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
+                      {formData.activo ? 'Permite transacciones y movimiento de inventario' : 'Bloquea operaciones temporales en este almacén'}
+                    </p>
+                  </div>
+                  <Switch
+                    size="small"
+                    checked={formData.activo}
+                    onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
+                    sx={switchSx}
+                  />
+                </div>
               )}
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest block ml-0.5">
-                Nombre Oficial del Almacén <span className="text-primary">*</span>
-              </label>
-              <TextField
-                fullWidth
-                placeholder="EJEMPLO: ALMACÉN DE MATERIA PRIMA"
-                value={formData.nombre}
-                onChange={(e) => setFormData({ ...formData, nombre: e.target.value.toUpperCase() })}
-                size="small"
-                autoFocus
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '14px',
-                    bgcolor: 'var(--surface, #ffffff)',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    color: 'var(--on-surface, #18181b)',
-                    '& fieldset': { borderColor: 'var(--border-outline-variant, #e4e4e7)' },
-                    '&:hover fieldset': { borderColor: 'var(--primary, #9d0013)' },
-                    '&.Mui-focused fieldset': { borderColor: 'var(--primary, #9d0013)' }
-                  },
-                  '& .MuiInputBase-input': { fontSize: '11px', py: '10px !important' }
-                }}
-              />
-              <span className="text-[8px] font-medium text-on-surface-variant block ml-1 opacity-70">
-                Escriba un nombre descriptivo único para identificar el almacén en los reportes.
-              </span>
-            </div>
+            {/* ── BLOQUE 2: Áreas & Roles Especiales ── */}
+            <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
+              <div className="flex items-center gap-2 text-primary border-b border-outline-variant/40 pb-2">
+                <span className="material-symbols-outlined text-lg">precision_manufacturing</span>
+                <span className="text-[10px] font-black uppercase tracking-widest font-headline">Operaciones & Producción</span>
+              </div>
 
-            {/* Switch Estado del Almacén (Solo al editar) */}
-            {isEditing && (
-              <div className="p-3 bg-surface rounded-xl border border-outline-variant/60 flex items-center justify-between gap-4">
+              {/* Area de producción */}
+              <div className="p-3 bg-surface rounded-xl border border-outline-variant/60 flex items-center justify-between gap-4 hover:border-primary/40 transition-colors">
                 <div className="space-y-0.5">
-                  <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
-                    Estado Operativo
-                  </p>
-                  <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
-                    {formData.activo ? 'Permite transacciones y movimiento de inventario' : 'Bloquea operaciones temporales en este almacén'}
-                  </p>
-                </div>
-                <Switch
-                  size="small"
-                  checked={formData.activo}
-                  onChange={(e) => setFormData({ ...formData, activo: e.target.checked })}
-                  sx={switchSx}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* ── BLOQUE 2: Áreas & Roles Especiales ── */}
-          <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
-            <div className="flex items-center gap-2 text-primary border-b border-outline-variant/40 pb-2">
-              <span className="material-symbols-outlined text-lg">precision_manufacturing</span>
-              <span className="text-[10px] font-black uppercase tracking-widest font-headline">Operaciones & Producción</span>
-            </div>
-
-            {/* Area de producción */}
-            <div className="p-3 bg-surface rounded-xl border border-outline-variant/60 flex items-center justify-between gap-4 hover:border-primary/40 transition-colors">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-base text-primary">factory</span>
-                  <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
-                    Área de Producción
-                  </p>
-                </div>
-                <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
-                  Habilita el flujo de transformación e insumos dentro de una planta productiva
-                </p>
-              </div>
-              <Switch
-                size="small"
-                checked={formData.produccion}
-                onChange={(e) => setFormData({ ...formData, produccion: e.target.checked })}
-                sx={switchSx}
-              />
-            </div>
-          </div>
-
-          {/* ── BLOQUE 3: Flujos de Solicitudes y Gestión PI ── */}
-          <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
-            <div className="flex items-center justify-between border-b border-outline-variant/40 pb-2">
-              <div className="flex items-center gap-2 text-primary">
-                <span className="material-symbols-outlined text-lg">swap_horizontal_circle</span>
-                <span className="text-[10px] font-black uppercase tracking-widest font-headline">Flujos de Trabajo & Transferencias</span>
-              </div>
-            </div>
-
-            {/* Switch Gestión PI */}
-            <div className={`p-3.5 rounded-xl border transition-all ${formData.gestion_pi
-                ? 'bg-primary/10 border-primary/40 shadow-sm'
-                : 'bg-surface border-outline-variant/60'
-              }`}>
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className={`material-symbols-outlined text-base ${formData.gestion_pi ? 'text-primary' : 'text-on-surface-variant'}`}>
-                      inventory_2
-                    </span>
+                    <span className="material-symbols-outlined text-base text-primary">factory</span>
                     <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
-                      Gestión de Productos Intermedios (PI)
+                      Área de Producción
                     </p>
                   </div>
                   <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
-                    Administra stock central de insumos elaborados y concentrados
+                    Habilita el flujo de transformación e insumos dentro de una planta productiva
                   </p>
                 </div>
                 <Switch
                   size="small"
-                  checked={formData.gestion_pi}
-                  onChange={(e) => handleGestionPiChange(e.target.checked)}
+                  checked={formData.produccion}
+                  onChange={(e) => setFormData({ ...formData, produccion: e.target.checked })}
                   sx={switchSx}
                 />
               </div>
-
-              {/* Mensajes informativos de Gestión PI */}
-              {anotherHasGestionPi && !formData.gestion_pi && (
-                <div className="mt-2.5 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2 text-amber-700 dark:text-amber-400">
-                  <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">warning</span>
-                  <span className="text-[7.5px] font-black uppercase tracking-tight leading-normal">
-                    Importante: Solo un almacén en todo el sistema puede tener activa la "Gestión PI". Si lo activa aquí, se deshabilitará en otros almacenes al guardar.
-                  </span>
-                </div>
-              )}
-
-              {formData.gestion_pi && (
-                <div className="mt-2.5 p-2 bg-primary/10 border border-primary/20 rounded-lg flex items-start gap-2 text-primary">
-                  <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">info</span>
-                  <span className="text-[7.5px] font-black uppercase tracking-tight leading-normal">
-                    Nota: Al activar Gestión PI, las opciones directas de "Solicitud a Planta" y "Entrega a Planta" quedan inhabilitadas por regla de negocio.
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Sub-bloque: Solicitud y Entrega Planta */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-
-              {/* Solicitud Planta */}
-              <div className={`p-3 rounded-xl border transition-all ${formData.gestion_pi
-                  ? 'opacity-40 bg-surface-variant/40 border-outline-variant/30 pointer-events-none'
-                  : 'bg-surface border-outline-variant/60 hover:border-primary/40'
-                }`}>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm text-primary">send</span>
-                    <span className="text-[10px] font-black text-on-surface uppercase tracking-wider">Solicitud Planta</span>
-                  </div>
-                  <Switch
-                    size="small"
-                    checked={formData.solicitud_planta && !formData.gestion_pi}
-                    disabled={formData.gestion_pi}
-                    onChange={(e) => setFormData({ ...formData, solicitud_planta: e.target.checked })}
-                    sx={switchSx}
-                  />
-                </div>
-                <p className="text-[7.5px] font-semibold text-on-surface-variant uppercase tracking-tight">
-                  {formData.gestion_pi ? 'No aplicable en almacén PI' : 'Puede requerir materia prima a la planta'}
-                </p>
-              </div>
-
-              {/* Entrega Planta */}
-              <div className={`p-3 rounded-xl border transition-all ${formData.gestion_pi
-                  ? 'opacity-40 bg-surface-variant/40 border-outline-variant/30 pointer-events-none'
-                  : 'bg-surface border-outline-variant/60 hover:border-primary/40'
-                }`}>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm text-primary">output</span>
-                    <span className="text-[10px] font-black text-on-surface uppercase tracking-wider">Entrega Planta</span>
-                  </div>
-                  <Switch
-                    size="small"
-                    checked={formData.entrega_planta && !formData.gestion_pi}
-                    disabled={formData.gestion_pi}
-                    onChange={(e) => setFormData({ ...formData, entrega_planta: e.target.checked })}
-                    sx={switchSx}
-                  />
-                </div>
-                <p className="text-[7.5px] font-semibold text-on-surface-variant uppercase tracking-tight">
-                  {formData.gestion_pi ? 'No aplicable en almacén PI' : 'Puede despachar productos a planta'}
-                </p>
-              </div>
-
             </div>
           </div>
 
-          {/* ── BLOQUE 4: Red de Almacenes Destino (Solicita A) ── */}
-          <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
-            <div className="flex items-center gap-2 text-primary border-b border-outline-variant/40 pb-2">
-              <span className="material-symbols-outlined text-lg">alt_route</span>
-              <span className="text-[10px] font-black uppercase tracking-widest font-headline">Vínculos de Requerimiento (Solicita A)</span>
+          {/* ── COLUMNA DERECHA: Flujos de Solicitudes y Gestión PI ── */}
+          <div className="space-y-4">
+            {/* ── BLOQUE 3: Flujos de Solicitudes y Gestión PI ── */}
+            <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3 h-full flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-outline-variant/40 pb-2 mb-3">
+                  <div className="flex items-center gap-2 text-primary">
+                    <span className="material-symbols-outlined text-lg">swap_horizontal_circle</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest font-headline">Flujos de Trabajo & Transferencias</span>
+                  </div>
+                </div>
+
+                {/* Switch Gestión PI */}
+                <div className={`p-3.5 rounded-xl border transition-all ${formData.gestion_pi
+                  ? 'bg-primary/10 border-primary/40 shadow-sm'
+                  : 'bg-surface border-outline-variant/60'
+                  }`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`material-symbols-outlined text-base ${formData.gestion_pi ? 'text-primary' : 'text-on-surface-variant'}`}>
+                          inventory_2
+                        </span>
+                        <p className="text-[10px] font-black text-on-surface uppercase tracking-wider leading-none">
+                          Gestión de Productos Intermedios (PI)
+                        </p>
+                      </div>
+                      <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight">
+                        Administra stock central de insumos elaborados y concentrados
+                      </p>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={formData.gestion_pi}
+                      onChange={(e) => handleGestionPiChange(e.target.checked)}
+                      sx={switchSx}
+                    />
+                  </div>
+
+                  {/* Mensajes informativos de Gestión PI */}
+                  {anotherHasGestionPi && !formData.gestion_pi && (
+                    <div className="mt-2.5 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-start gap-2 text-amber-700 dark:text-amber-400">
+                      <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">warning</span>
+                      <span className="text-[7.5px] font-black uppercase tracking-tight leading-normal">
+                        Importante: Solo un almacén en todo el sistema puede tener activa la "Gestión PI". Si lo activa aquí, se deshabilitará en otros almacenes al guardar.
+                      </span>
+                    </div>
+                  )}
+
+                  {formData.gestion_pi && (
+                    <div className="mt-2.5 p-2 bg-primary/10 border border-primary/20 rounded-lg flex items-start gap-2 text-primary">
+                      <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">info</span>
+                      <span className="text-[7.5px] font-black uppercase tracking-tight leading-normal">
+                        Nota: Al activar Gestión PI, las opciones directas de "Solicitud a Planta" y "Entrega a Planta" quedan inhabilitadas por regla de negocio.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sub-bloque: Solicitud y Entrega Planta */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+
+                {/* Solicitud Planta */}
+                <div className={`p-3 rounded-xl border transition-all ${formData.gestion_pi
+                  ? 'opacity-40 bg-surface-variant/40 border-outline-variant/30 pointer-events-none'
+                  : 'bg-surface border-outline-variant/60 hover:border-primary/40'
+                  }`}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-primary">send</span>
+                      <span className="text-[10px] font-black text-on-surface uppercase tracking-wider">Solicitud Planta</span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={formData.solicitud_planta && !formData.gestion_pi}
+                      disabled={formData.gestion_pi}
+                      onChange={(e) => setFormData({ ...formData, solicitud_planta: e.target.checked })}
+                      sx={switchSx}
+                    />
+                  </div>
+                  <p className="text-[7.5px] font-semibold text-on-surface-variant uppercase tracking-tight">
+                    {formData.gestion_pi ? 'No aplicable en almacén PI' : 'Puede requerir materia prima a la planta'}
+                  </p>
+                </div>
+
+                {/* Entrega Planta */}
+                <div className={`p-3 rounded-xl border transition-all ${formData.gestion_pi
+                  ? 'opacity-40 bg-surface-variant/40 border-outline-variant/30 pointer-events-none'
+                  : 'bg-surface border-outline-variant/60 hover:border-primary/40'
+                  }`}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-primary">output</span>
+                      <span className="text-[10px] font-black text-on-surface uppercase tracking-wider">Entrega Planta</span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={formData.entrega_planta && !formData.gestion_pi}
+                      disabled={formData.gestion_pi}
+                      onChange={(e) => setFormData({ ...formData, entrega_planta: e.target.checked })}
+                      sx={switchSx}
+                    />
+                  </div>
+                  <p className="text-[7.5px] font-semibold text-on-surface-variant uppercase tracking-tight">
+                    {formData.gestion_pi ? 'No aplicable en almacén PI' : 'Puede despachar productos a planta'}
+                  </p>
+                </div>
+
+              </div>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest block ml-0.5">
-                Seleccionar Almacenes de Destino
-              </label>
-              <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight block ml-0.5">
-                Establece a qué almacenes autorizados de la empresa podrá solicitar insumos o productos este almacén.
-              </p>
+          {/* ── ANCHO COMPLETO: Red de Almacenes Destino (Solicita A) ── */}
+          <div className="md:col-span-2">
+            <div className="p-4 bg-surface-variant/40 rounded-2xl border border-outline-variant/60 space-y-3">
+              <div className="flex items-center gap-2 text-primary border-b border-outline-variant/40 pb-2">
+                <span className="material-symbols-outlined text-lg">alt_route</span>
+                <span className="text-[10px] font-black uppercase tracking-widest font-headline">Vínculos de Requerimiento (Solicita A)</span>
+              </div>
 
-              <Autocomplete
-                multiple
-                options={availableForSolicita}
-                getOptionLabel={(o) => o.DESCRICION || ''}
-                value={formData.solicita_a}
-                onChange={(_, v) => setFormData({ ...formData, solicita_a: v as AlmacenOption[] })}
-                isOptionEqualToValue={(option, value) => option.ID_PLANTA_ALMACEN === value.ID_PLANTA_ALMACEN}
-                filterSelectedOptions={true}
-                noOptionsText="No hay más almacenes activos disponibles"
-                renderTags={(tagValue, getTagProps) =>
-                  tagValue.map((option, index) => {
-                    const tagProps = getTagProps({ index });
-                    return (
-                      <Chip
-                        key={option.ID_PLANTA_ALMACEN}
-                        label={option.DESCRICION}
-                        {...tagProps}
-                        size="small"
-                        sx={{
-                          fontSize: '8.5px',
-                          fontWeight: '900',
-                          textTransform: 'uppercase',
-                          height: 24,
-                          borderRadius: '10px',
-                          bgcolor: 'var(--primary, #9d0013)',
-                          color: '#ffffff',
-                          boxShadow: '0 2px 4px rgba(157, 0, 19, 0.2)',
-                          '& .MuiChip-deleteIcon': {
-                            color: 'rgba(255,255,255,0.85)',
-                            fontSize: '14px',
-                            '&:hover': { color: '#ffffff' }
-                          }
-                        }}
-                      />
-                    );
-                  })
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    variant="outlined"
-                    size="small"
-                    placeholder={formData.solicita_a.length === 0 ? 'Buscar almacén...' : ''}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: '14px',
-                        bgcolor: 'var(--surface, #ffffff)',
-                        color: 'var(--on-surface)',
-                        fontSize: '11px',
-                        py: '4px',
-                        '& fieldset': { borderColor: 'var(--border-outline-variant, #e4e4e7)' },
-                        '&:hover fieldset': { borderColor: 'var(--primary, #9d0013)' },
-                        '&.Mui-focused fieldset': { borderColor: 'var(--primary, #9d0013)' },
-                      }
-                    }}
-                  />
-                )}
-              />
+              <div className="space-y-2">
+                <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest block ml-0.5">
+                  Seleccionar Almacenes de Destino
+                </label>
+                <p className="text-[8px] font-semibold text-on-surface-variant uppercase tracking-tight block ml-0.5">
+                  Establece a qué almacenes autorizados de la empresa podrá solicitar insumos o productos este almacén.
+                </p>
+
+                <Autocomplete
+                  multiple
+                  options={availableForSolicita}
+                  getOptionLabel={(o) => o.DESCRICION || ''}
+                  value={formData.solicita_a}
+                  onChange={(_, v) => setFormData({ ...formData, solicita_a: v as AlmacenOption[] })}
+                  isOptionEqualToValue={(option, value) => option.ID_PLANTA_ALMACEN === value.ID_PLANTA_ALMACEN}
+                  filterSelectedOptions={true}
+                  noOptionsText="No hay más almacenes activos disponibles"
+                  renderTags={(tagValue, getTagProps) =>
+                    tagValue.map((option, index) => {
+                      const tagProps = getTagProps({ index });
+                      return (
+                        <Chip
+                          key={option.ID_PLANTA_ALMACEN}
+                          label={option.DESCRICION}
+                          {...tagProps}
+                          size="small"
+                          sx={{
+                            fontSize: '8.5px',
+                            fontWeight: '900',
+                            textTransform: 'uppercase',
+                            height: 24,
+                            borderRadius: '10px',
+                            bgcolor: 'var(--primary, #9d0013)',
+                            color: '#ffffff',
+                            boxShadow: '0 2px 4px rgba(157, 0, 19, 0.2)',
+                            '& .MuiChip-deleteIcon': {
+                              color: 'rgba(255,255,255,0.85)',
+                              fontSize: '14px',
+                              '&:hover': { color: '#ffffff' }
+                            }
+                          }}
+                        />
+                      );
+                    })
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      variant="outlined"
+                      size="small"
+                      placeholder={formData.solicita_a.length === 0 ? 'Buscar almacén...' : ''}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: '14px',
+                          bgcolor: 'var(--surface, #ffffff)',
+                          color: 'var(--on-surface)',
+                          fontSize: '11px',
+                          py: '4px',
+                          '& fieldset': { borderColor: 'var(--border-outline-variant, #e4e4e7)' },
+                          '&:hover fieldset': { borderColor: 'var(--primary, #9d0013)' },
+                          '&.Mui-focused fieldset': { borderColor: 'var(--primary, #9d0013)' },
+                        }
+                      }}
+                    />
+                  )}
+                />
+              </div>
             </div>
           </div>
 

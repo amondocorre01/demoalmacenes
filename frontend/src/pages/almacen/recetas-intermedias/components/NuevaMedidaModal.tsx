@@ -26,6 +26,7 @@ interface NuevaMedidaModalProps {
   }) => Promise<void>;
   isLoading?: boolean;
   selectSx?: any;
+  requiereLoteo?: boolean;
 }
 
 export const NuevaMedidaModal: React.FC<NuevaMedidaModalProps> = ({
@@ -34,7 +35,8 @@ export const NuevaMedidaModal: React.FC<NuevaMedidaModalProps> = ({
   unitsList,
   onSave,
   isLoading = false,
-  selectSx
+  selectSx,
+  requiereLoteo = false,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -47,8 +49,9 @@ export const NuevaMedidaModal: React.FC<NuevaMedidaModalProps> = ({
 
   const handleSave = async () => {
     if (!stdQty || !stdUnit || !adeqQty || !adeqUnit) return;
+    const finalLabel = label.trim() || `Lote (${stdQty} ${stdUnit.UNIDAD_MEDIDA || stdUnit.name || 'U'})`;
     await onSave({
-      label: label || `Lote (${stdQty} ${stdUnit.UNIDAD_MEDIDA || stdUnit.name || 'U'})`,
+      label: finalLabel,
       stdQty,
       stdUnitId: stdUnit.ID_UNIDAD_MEDIDA || stdUnit.id || 1,
       adeqQty,
@@ -69,7 +72,6 @@ export const NuevaMedidaModal: React.FC<NuevaMedidaModalProps> = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      TransitionComponent={Zoom}
       slotProps={{
         paper: {
           sx: {
@@ -126,12 +128,12 @@ export const NuevaMedidaModal: React.FC<NuevaMedidaModalProps> = ({
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest block ml-0.5">
-                Nombre o Etiqueta Opcional
+                Nombre o Etiqueta de la Medida {requiereLoteo && <span className="text-primary">* (Requerido por Loteo)</span>}
               </label>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="EJEMPLO: LOTE DE (10 UNIDADES)"
+                placeholder={requiereLoteo ? 'EJEMPLO: LOTE DE 10 UNIDADES' : 'EJEMPLO: LOTE DE (10 UNIDADES) (OPCIONAL)'}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 sx={selectSx}

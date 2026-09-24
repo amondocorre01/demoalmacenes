@@ -39,9 +39,12 @@ export interface InventarioDetalleItem {
   ID_PRODUCTO_DETALLE?: number;
   CANTIDAD?: number;
   CANTIDAD_UTILIZADA?: number;
+  DISPONIBLE?: number;
   STOCK_LOTE?: number;
   FECHA_REGISTRO?: string;
   FECHA_VENCIMIENTO?: string;
+  USUARIO_REGISTRA?: string;
+  DESCRICION?: string;
   LOTE?: string;
   UNIDAD_MEDIDA?: string;
   ID_ESTADO?: number;
@@ -53,11 +56,15 @@ export interface InventarioItem {
   ID_PRODUCTO_INTERMEDIO?: number;
   PRODUCTO: string;
   NOMBRE?: string;
+  NOMBRE_DETALLE?: string | null;
   CODIGO?: string;
   SKU?: string;
   CATEGORIA?: string;
   SUB_CATEGORIA?: string;
-  STOCK: number | string;
+  CANTIDAD?: number;
+  STOCK?: number | string;
+  CANTIDAD_ADECUACION?: number;
+  FECHA_VENCIMIENTO?: string;
   UNIDAD_MEDIDA?: string;
   UNIDAD_MEDIDA_A?: string;
   UNIDAD_MEDIDA_D?: string;
@@ -71,8 +78,11 @@ export interface ProductoAlmacenItem {
   ID_PRODUCTO_INTERMEDIO?: number;
   PRODUCTO: string;
   ESTADO?: number;
-  STOCK?: number;
+  STOCK?: number | string;
+  CANTIDAD?: number | string;
   UNIDAD_MEDIDA?: string;
+  UNIDAD_MEDIDA_A?: string;
+  UNIDAD_MEDIDA_E?: string;
 }
 
 export interface ProductoEspecialItem {
@@ -122,7 +132,7 @@ export const useInventarioAlmacenesServices = () => {
    */
   const loadApiGetAlmacenesUsuario = async (idPlantaAlmacen = 0) => {
     try {
-      const respuesta = await api.get<any>('/inventario/reportes/almacenes', {
+      const respuesta = await api.get<any>('/v1/inventario/reportes/almacenes', {
         params: { id_planta_almacen: idPlantaAlmacen },
       });
       return respuesta.data;
@@ -138,7 +148,7 @@ export const useInventarioAlmacenesServices = () => {
    */
   const loadApiGetInventarioAlmacen = async (idAlmacen: number | string, tipoGroup = 1) => {
     try {
-      const respuesta = await api.get<any>(`/inventario/reportes/${idAlmacen}/inventario`, {
+      const respuesta = await api.get<any>(`/v1/inventario/reportes/${idAlmacen}/inventario`, {
         params: { tipo_group: tipoGroup },
       });
       return respuesta.data;
@@ -154,7 +164,7 @@ export const useInventarioAlmacenesServices = () => {
    */
   const loadApiGetProductosAlmacen = async (idAlmacen: number | string) => {
     try {
-      const respuesta = await api.get<any>(`/inventario/reportes/${idAlmacen}/productos`);
+      const respuesta = await api.get<any>(`/v1/inventario/reportes/${idAlmacen}/productos`);
       return respuesta.data;
     } catch (error) {
       handleApiError(error);
@@ -168,7 +178,7 @@ export const useInventarioAlmacenesServices = () => {
    */
   const loadApiGetProductosEspeciales = async (idAlmacen: number | string) => {
     try {
-      const respuesta = await api.get<any>(`/inventario/reportes/${idAlmacen}/productos-especiales`);
+      const respuesta = await api.get<any>(`/v1/inventario/reportes/${idAlmacen}/productos-especiales`);
       return respuesta.data;
     } catch (error) {
       handleApiError(error);
@@ -185,7 +195,7 @@ export const useInventarioAlmacenesServices = () => {
     payload: DepreciarProductoPayload
   ) => {
     try {
-      const respuesta = await api.post<any>(`/inventario/reportes/${idAlmacen}/depreciar`, payload);
+      const respuesta = await api.post<any>(`/v1/inventario/reportes/${idAlmacen}/depreciar`, payload);
       return respuesta.data;
     } catch (error) {
       handleApiError(error);
@@ -203,7 +213,7 @@ export const useInventarioAlmacenesServices = () => {
     fechaFin = ''
   ) => {
     try {
-      const respuesta = await api.get<any>(`/inventario/reportes/${idAlmacen}/depreciados`, {
+      const respuesta = await api.get<any>(`/v1/inventario/reportes/${idAlmacen}/depreciados`, {
         params: {
           fecha_inicio: fechaInicio,
           fecha_fin: fechaFin,
@@ -217,14 +227,15 @@ export const useInventarioAlmacenesServices = () => {
   };
 
   /**
-   * 7. GET /inventario/rep-desp/productos-vencidos?id_planta_almacen=X
+   * 7. GET /inventario/rep-desp/productos-vencidos?almacenes=X&fecha=YYYY-MM-DD
    * Retorna los productos vencidos en inventario.
    */
-  const loadApiGetProductosVencidos = async (idPlantaAlmacen?: number | string) => {
+  const loadApiGetProductosVencidos = async (almacenes?: number | string, fecha = '') => {
     try {
-      const respuesta = await api.get<any>('/inventario/rep-desp/productos-vencidos', {
+      const respuesta = await api.get<any>('/v1/inventario/rep-desp/productos-vencidos', {
         params: {
-          id_planta_almacen: idPlantaAlmacen || 0,
+          almacenes: almacenes !== undefined && almacenes !== null ? String(almacenes) : '',
+          fecha: fecha || '',
         },
       });
       return respuesta.data;

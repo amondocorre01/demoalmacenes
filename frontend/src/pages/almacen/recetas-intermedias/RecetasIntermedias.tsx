@@ -383,6 +383,21 @@ const RecetasIntermedias: React.FC = () => {
       return;
     }
 
+    // Control: si tiene loteo tiene que tener por lo menos una etiqueta la receta
+    const tieneLoteo = Boolean(selectedProduct.REQUIERE_LOTEO || selectedProduct.requiere_loteo);
+    if (tieneLoteo && (!activeMeasure.label || !activeMeasure.label.trim())) {
+      showAlert.error(
+        'Etiqueta Requerida',
+        'Este producto intermedio requiere loteo, por lo que la receta debe tener obligatoriamente al menos una etiqueta/medida asignada.'
+      );
+      return;
+    }
+
+    if (!activeMeasure.recipe || activeMeasure.recipe.length === 0) {
+      showAlert.error('Receta Vacía', 'Debe agregar al menos un insumo o producto a la receta');
+      return;
+    }
+
     setIsLoading(true);
     const productosPayload = activeMeasure.recipe.map((item: any) => ({
       id_producto: item.id_producto || 0,
@@ -818,6 +833,7 @@ const RecetasIntermedias: React.FC = () => {
         onSave={handleSaveNewMeasure}
         isLoading={isLoading}
         selectSx={selectSx}
+        requiereLoteo={Boolean(selectedProduct?.REQUIERE_LOTEO || selectedProduct?.requiere_loteo)}
       />
 
       {/* Modal: Vincular Producto Intermedio */}

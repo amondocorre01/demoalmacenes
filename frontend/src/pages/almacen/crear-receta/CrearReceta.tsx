@@ -127,6 +127,7 @@ const CrearReceta: React.FC = () => {
             unit: i.UNIDAD_MEDIDA || 'Unidad',
             type: 'intermedio',
             id_unidad_medida: i.ID_UNIDAD_MEDIDA || 1,
+            requiere_loteo: Boolean(i.REQUIERE_LOTEO || i.requiere_loteo),
             icon: 'water_drop'
           }))
         );
@@ -268,7 +269,8 @@ const CrearReceta: React.FC = () => {
       tempId: Date.now(),
       id_unidad_medida: selectedIngredient.id_unidad_medida || 1,
       id_producto: selectedIngredient.type === 'insumo' ? selectedIngredient.id : 0,
-      id_producto_intermedio: selectedIngredient.type === 'intermedio' ? selectedIngredient.id : 0
+      id_producto_intermedio: selectedIngredient.type === 'intermedio' ? selectedIngredient.id : 0,
+      requiere_loteo: selectedIngredient.requiere_loteo ?? false
     };
 
     setRecipeItems([newItem, ...recipeItems]);
@@ -299,6 +301,27 @@ const CrearReceta: React.FC = () => {
     if (!targetProduct || !selectedWarehouse || recipeItems.length === 0) {
       showAlert.error('Error', 'Complete los datos y agregue al menos un ingrediente');
       return;
+    }
+
+    // Control: Si la receta contiene productos intermedios, por lo menos uno debe tener loteo configurado
+    const hasIntermediates = recipeItems.some(
+      item => item.type === 'intermedio' || (item.id_producto_intermedio && item.id_producto_intermedio > 0)
+    );
+    if (hasIntermediates) {
+      const hasLoteoIntermediate = recipeItems.some(item => {
+        if (item.type !== 'intermedio' && !item.id_producto_intermedio) return false;
+        const targetId = item.id_producto_intermedio || item.id;
+        const found = intermediosList.find(im => im.id === targetId);
+        return Boolean(found?.requiere_loteo || item.requiere_loteo);
+      });
+
+      if (!hasLoteoIntermediate) {
+        showAlert.error(
+          'Loteo Requerido',
+          'La receta contiene productos intermedios pero ninguno requiere loteo. Para asegurar la trazabilidad de la producción, por lo menos uno de los productos intermedios debe tener configurada la opción "Requiere Loteo".'
+        );
+        return;
+      }
     }
 
     setIsLoading(true);
